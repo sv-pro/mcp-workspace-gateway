@@ -1,0 +1,43 @@
+{
+  "id": "filesystem",
+  "name": "Filesystem Mock",
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Read a file",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" }
+        },
+        "required": ["path"]
+      },
+      "mockResult": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Mock filesystem read result"
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_files",
+      "description": "List files",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "directory": { "type": "string" }
+        }
+      },
+      "mockResult": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Mock filesystem list result"
+          }
+        ]
+      }
+    }
+  ]
+}

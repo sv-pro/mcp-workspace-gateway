@@ -1,0 +1,44 @@
+{
+  "id": "github",
+  "name": "GitHub Mock",
+  "tools": [
+    {
+      "name": "search",
+      "description": "Search GitHub",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string" }
+        },
+        "required": ["query"]
+      },
+      "mockResult": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Mock GitHub search result"
+          }
+        ]
+      }
+    },
+    {
+      "name": "create_issue",
+      "description": "Create GitHub issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" }
+        },
+        "required": ["title"]
+      },
+      "mockResult": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Mock GitHub issue created"
+          }
+        ]
+      }
+    }
+  ]
+}
