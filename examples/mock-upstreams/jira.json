@@ -1,0 +1,44 @@
+{
+  "id": "jira",
+  "name": "Jira Mock",
+  "tools": [
+    {
+      "name": "search",
+      "description": "Search Jira issues",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string" }
+        },
+        "required": ["query"]
+      },
+      "mockResult": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Mock Jira search result"
+          }
+        ]
+      }
+    },
+    {
+      "name": "create_issue",
+      "description": "Create Jira issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "summary": { "type": "string" }
+        },
+        "required": ["summary"]
+      },
+      "mockResult": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Mock Jira issue created"
+          }
+        ]
+      }
+    }
+  ]
+}

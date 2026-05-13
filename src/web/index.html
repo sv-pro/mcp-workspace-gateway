@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MCP Workspace Gateway</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; }
+      h1 { margin-bottom: 8px; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 16px; }
+      section { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+      ul { margin: 0; padding-left: 18px; }
+      code { background: #f7f7f7; padding: 2px 6px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>MCP Workspace Gateway</h1>
+    <p id="gateway-status">Gateway: checking…</p>
+
+    <div class="grid">
+      <section>
+        <h2>Upstreams</h2>
+        <ul id="upstreams"></ul>
+      </section>
+      <section>
+        <h2>Sessions</h2>
+        <ul id="sessions"></ul>
+      </section>
+      <section>
+        <h2>Tools</h2>
+        <ul id="tools"></ul>
+      </section>
+      <section>
+        <h2>Traces</h2>
+        <ul id="traces"></ul>
+      </section>
+    </div>
+
+    <script>
+      const el = (id) => document.getElementById(id);
+      const list = (id, items) => {
+        const node = el(id);
+        node.innerHTML = '';
+        if (!items.length) {
+          const li = document.createElement('li');
+          li.textContent = '(none)';
+          node.appendChild(li);
+          return;
+        }
+        for (const item of items) {
+          const li = document.createElement('li');
+          li.textContent = item;
+          node.appendChild(li);
+        }
+      };
+
+      async function refresh() {
+        const response = await fetch('/api/status');
+        const status = await response.json();
+
+        el('gateway-status').textContent = `Gateway: ${status.running ? 'running' : 'stopped'}`;
+        list('upstreams', status.upstreams.map((u) => `${u.id} (${u.type}, tools: ${u.tool_count})`));
+        list('sessions', status.sessions.map((s) => `${s.session_id}: ${s.status}`));
+        list('tools', status.tools.map((t) => t.exposed_name));
+        list(
+          'traces',
+          status.traces.slice(0, 20).map((t) => `${t.method} from ${t.session_id} -> ${t.status}${t.exposed_tool_name ? ` (${t.exposed_tool_name})` : ''}`),
+        );
+      }
+
+      refresh().catch((error) => {
+        el('gateway-status').textContent = `Gateway: error (${error.message})`;
+      });
+      setInterval(() => refresh().catch(() => {}), 2000);
+    </script>
+  </body>
+</html>

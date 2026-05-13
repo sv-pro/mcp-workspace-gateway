@@ -1,0 +1,69 @@
+export type JsonRpcId = string | number | null;
+
+export interface JsonRpcRequest {
+  jsonrpc: '2.0';
+  id?: JsonRpcId;
+  method: string;
+  params?: unknown;
+}
+
+export interface JsonRpcError {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+
+export interface JsonRpcResponse {
+  jsonrpc: '2.0';
+  id: JsonRpcId;
+  result?: unknown;
+  error?: JsonRpcError;
+}
+
+export interface MockToolDefinition {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+  mockResult?: unknown;
+}
+
+export interface MockUpstreamFile {
+  id?: string;
+  name?: string;
+  tools: MockToolDefinition[];
+}
+
+export interface UpstreamTool {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+export interface UpstreamAdapter {
+  id: string;
+  type: 'mock' | 'stdio' | 'http';
+  name: string;
+  listTools(): Promise<UpstreamTool[]>;
+  callTool(rawToolName: string, args: unknown): Promise<unknown>;
+}
+
+export interface AggregatedTool {
+  canonical_tool_id: string;
+  exposed_name: string;
+  upstream_id: string;
+  raw_name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+export interface TraceEvent {
+  timestamp: string;
+  session_id: string;
+  direction: string;
+  method: string;
+  exposed_tool_name: string | null;
+  upstream_id: string | null;
+  raw_tool_name: string | null;
+  status: 'ok' | 'error';
+  error_code: string | null;
+}
