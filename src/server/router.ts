@@ -1,5 +1,7 @@
 import { JSON_RPC_ERRORS, createError, createErrorResponse, createSuccess } from '../protocol/mcpJsonRpc.js';
-import { JsonRpcRequest, JsonRpcResponse, TraceEvent } from '../protocol/types.js';
+import { JsonRpcRequest, JsonRpcResponse, PolicyDecision, TraceEvent } from '../protocol/types.js';
+import { ApprovalQueue } from './approvalQueue.js';
+import { PolicyRegistry } from './policyRegistry.js';
 import { ProfileRegistry } from './profileRegistry.js';
 import { SessionManager } from './sessionManager.js';
 import { ToolRegistry } from './toolRegistry.js';
@@ -18,6 +20,8 @@ export class Router {
     private readonly toolRegistry: ToolRegistry,
     private readonly traces: TraceStore,
     private readonly profiles: ProfileRegistry,
+    private readonly policyRegistry: PolicyRegistry,
+    private readonly approvalQueue: ApprovalQueue,
   ) {}
 
   async handle(sessionId: string, request: JsonRpcRequest): Promise<JsonRpcResponse | null> {
@@ -54,8 +58,11 @@ export class Router {
         case 'tools/list': {
           const upstreamFilter = this.resolveUpstreamFilter(sessionId);
           const tools = await this.toolRegistry.list(upstreamFilter);
+          const visible = tools.filter(
+            (t) => this.resolveDecision(sessionId, t.exposed_name).decision !== 'absent',
+          );
           response = createSuccess(request.id, {
-            tools: tools.map((tool) => ({
+            tools: visible.map((tool) => ({
               name: tool.exposed_name,
               description: tool.description,
               inputSchema: tool.inputSchema ?? { type: 'object', properties: {} },
@@ -85,6 +92,28 @@ export class Router {
           const upstream = this.upstreamRegistry.get(resolved.upstream_id);
           if (!upstream) {
             throw createError(JSON_RPC_ERRORS.internal, `Upstream missing: ${resolved.upstream_id}`);
+          }
+
+          const { decision, mock_result } = this.resolveDecision(sessionId, resolved.exposed_name);
+
+          if (decision === 'deny' || decision === 'absent') {
+            throw createError(JSON_RPC_ERRORS.invalidParams, `Tool call denied by policy: ${params.name}`);
+          }
+
+          if (decision === 'simulate') {
+            response = createSuccess(request.id, mock_result ?? {});
+            break;
+          }
+
+          if (decision === 'ask') {
+            const allowed = await this.approvalQueue.enqueue(
+              sessionId,
+              resolved.exposed_name,
+              params.arguments ?? {},
+            );
+            if (!allowed) {
+              throw createError(JSON_RPC_ERRORS.invalidParams, `Tool call rejected by operator: ${params.name}`);
+            }
           }
 
           const result = await upstream.callTool(resolved.raw_name, params.arguments ?? {});
@@ -122,5 +151,33 @@ export class Router {
     }
     const profile = this.profiles.get(session.profile);
     return profile?.upstreamIds;
+  }
+
+  private resolveDecision(
+    sessionId: string,
+    exposedName: string,
+  ): { decision: PolicyDecision; mock_result?: unknown } {
+    const session = this.sessions.list().find((s) => s.session_id === sessionId);
+    if (!session?.policy) {
+      return { decision: 'allow' };
+    }
+    const policy = this.policyRegistry.get(session.policy);
+    if (!policy) {
+      return { decision: 'allow' };
+    }
+    for (const rule of policy.rules) {
+      if (this.matchesPattern(rule.pattern, exposedName)) {
+        return { decision: rule.decision, mock_result: rule.mock_result };
+      }
+    }
+    return { decision: policy.default_decision };
+  }
+
+  private matchesPattern(pattern: string, name: string): boolean {
+    const escaped = pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.');
+    return new RegExp(`^${escaped}$`).test(name);
   }
 }

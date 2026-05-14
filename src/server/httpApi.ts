@@ -338,6 +338,64 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
         return writeJson(res, 200, { ok: true });
       }
 
+      if (method === 'GET' && pathname === '/api/policies') {
+        return writeJson(res, 200, gateway.policies.list());
+      }
+
+      if (method === 'POST' && pathname === '/api/policies') {
+        const body = await readJson<{ id?: string; rules?: unknown; default_decision?: string }>(req);
+        if (!body.id || !Array.isArray(body.rules) || (body.default_decision !== 'allow' && body.default_decision !== 'deny')) {
+          return writeJson(res, 400, { error: 'id, rules (array), and default_decision ("allow"|"deny") are required' });
+        }
+        try {
+          return writeJson(res, 201, gateway.policies.upsert({
+            id: body.id,
+            rules: body.rules as never,
+            default_decision: body.default_decision,
+          }));
+        } catch (err) {
+          return writeJson(res, 400, { error: (err as Error).message });
+        }
+      }
+
+      const policyPathParts = pathname.split('/');
+      if (method === 'GET' && policyPathParts[1] === 'api' && policyPathParts[2] === 'policies' && policyPathParts.length === 4) {
+        const policyId = decodeURIComponent(policyPathParts[3] ?? '');
+        const policy = gateway.policies.get(policyId);
+        if (!policy) {
+          return writeJson(res, 404, { error: `Policy not found: ${policyId}` });
+        }
+        return writeJson(res, 200, policy);
+      }
+
+      if (method === 'DELETE' && policyPathParts[1] === 'api' && policyPathParts[2] === 'policies' && policyPathParts.length === 4) {
+        const policyId = decodeURIComponent(policyPathParts[3] ?? '');
+        if (!gateway.policies.remove(policyId)) {
+          return writeJson(res, 404, { error: `Policy not found: ${policyId}` });
+        }
+        return writeJson(res, 200, { ok: true });
+      }
+
+      if (method === 'GET' && pathname === '/api/approvals') {
+        return writeJson(res, 200, gateway.approvals.list());
+      }
+
+      const approvalPathParts = pathname.split('/');
+      if (
+        method === 'POST' &&
+        approvalPathParts[1] === 'api' &&
+        approvalPathParts[2] === 'approvals' &&
+        approvalPathParts.length === 5 &&
+        (approvalPathParts[4] === 'allow' || approvalPathParts[4] === 'deny')
+      ) {
+        const approvalId = decodeURIComponent(approvalPathParts[3] ?? '');
+        const allow = approvalPathParts[4] === 'allow';
+        if (!gateway.approvals.decide(approvalId, allow)) {
+          return writeJson(res, 404, { error: `Approval not found: ${approvalId}` });
+        }
+        return writeJson(res, 200, { ok: true });
+      }
+
       if (method === 'POST' && pathname.startsWith('/api/sessions/') && pathname.endsWith('/connect')) {
         const sessionId = decodeURIComponent(pathname.split('/')[3] ?? '');
         if (!sessionId) {
@@ -367,6 +425,21 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
           return writeJson(res, 400, { error: 'profileId is required' });
         }
         if (!gateway.sessions.setProfile(sessionId, body.profileId)) {
+          return writeJson(res, 404, { error: `Session not found: ${sessionId}` });
+        }
+        return writeJson(res, 200, { ok: true });
+      }
+
+      if (method === 'POST' && pathname.startsWith('/api/sessions/') && pathname.endsWith('/policy')) {
+        const sessionId = decodeURIComponent(pathname.split('/')[3] ?? '');
+        if (!sessionId) {
+          return writeJson(res, 400, { error: 'session_id is required' });
+        }
+        const body = await readJson<{ policyId?: string }>(req);
+        if (!body.policyId) {
+          return writeJson(res, 400, { error: 'policyId is required' });
+        }
+        if (!gateway.sessions.setPolicy(sessionId, body.policyId)) {
           return writeJson(res, 404, { error: `Session not found: ${sessionId}` });
         }
         return writeJson(res, 200, { ok: true });

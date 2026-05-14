@@ -78,6 +78,28 @@ export interface Profile {
   upstreamIds: string[];
 }
 
+export type PolicyDecision = 'allow' | 'deny' | 'absent' | 'simulate' | 'ask';
+
+export interface PolicyRule {
+  pattern: string;
+  decision: PolicyDecision;
+  mock_result?: unknown;
+}
+
+export interface GovernancePolicy {
+  id: string;
+  rules: PolicyRule[];
+  default_decision: 'allow' | 'deny';
+}
+
+export interface ApprovalSummary {
+  id: string;
+  session_id: string;
+  exposed_name: string;
+  args: unknown;
+  created_at: string;
+}
+
 export interface TraceEvent {
   timestamp: string;
   session_id: string;
