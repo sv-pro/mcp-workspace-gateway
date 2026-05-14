@@ -1,3 +1,6 @@
 node_modules
 dist
 npm-debug.log*
+.mcp-mux*.pid
+.mcp-mux*.log
+.mcp-mux-upstreams.json

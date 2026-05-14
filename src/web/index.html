@@ -5,12 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MCP Workspace Gateway</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 24px; }
+      body { color: #1f2937; font-family: Arial, sans-serif; margin: 24px; }
       h1 { margin-bottom: 8px; }
       .grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 16px; }
       section { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+      button, input, select, textarea { font: inherit; }
+      button { cursor: pointer; }
+      input, select, textarea { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; }
+      textarea { min-height: 220px; resize: vertical; }
       ul { margin: 0; padding-left: 18px; }
       code { background: #f7f7f7; padding: 2px 6px; border-radius: 4px; }
+      .actionable { cursor: pointer; transition: border-color 120ms ease, box-shadow 120ms ease; }
+      .actionable:hover, .actionable:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14); outline: none; }
+      .panel-title { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
+      .panel-title h2 { margin: 0; }
+      .hint { color: #64748b; font-size: 0.9rem; }
+      .manager { margin-top: 16px; }
+      .hidden { display: none; }
+      .manager-header { align-items: center; display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+      .manager-header h2 { margin: 0; }
+      .manager-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(260px, 360px); gap: 16px; }
+      .upstream-cards { display: grid; gap: 10px; }
+      .upstream-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+      .upstream-card header { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
+      .upstream-card h3 { margin: 0; }
+      .upstream-meta { color: #475569; margin: 8px 0; }
+      .upstream-file { word-break: break-all; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+      .form-stack { display: grid; gap: 10px; }
+      .field { display: grid; gap: 4px; }
+      .field label { color: #334155; font-size: 0.9rem; font-weight: 700; }
+      .readonly { background: #f8fafc; color: #334155; }
+      .primary { background: #2563eb; border: 1px solid #2563eb; border-radius: 6px; color: #fff; padding: 8px 10px; }
+      .secondary { background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; color: #1f2937; padding: 8px 10px; }
+      .danger { background: #fff; border: 1px solid #dc2626; border-radius: 6px; color: #b91c1c; padding: 8px 10px; }
+      .notice { border-radius: 6px; margin-bottom: 12px; padding: 10px; }
+      .notice.info { background: #eff6ff; color: #1d4ed8; }
+      .notice.error { background: #fef2f2; color: #b91c1c; }
+      .notice.success { background: #f0fdf4; color: #15803d; }
+      .empty { color: #64748b; padding: 12px 0; }
+      @media (max-width: 760px) {
+        .grid, .manager-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
@@ -18,8 +54,11 @@
     <p id="gateway-status">Gateway: checking…</p>
 
     <div class="grid">
-      <section>
-        <h2>Upstreams</h2>
+      <section id="upstreams-panel" class="actionable" role="button" tabindex="0" aria-controls="upstream-manager" aria-expanded="false">
+        <div class="panel-title">
+          <h2>Upstreams</h2>
+          <span class="hint">Manage</span>
+        </div>
         <ul id="upstreams"></ul>
       </section>
       <section>
@@ -36,8 +75,105 @@
       </section>
     </div>
 
+    <section id="upstream-manager" class="manager hidden" aria-live="polite">
+      <div class="manager-header">
+        <div>
+          <h2>Upstream Servers</h2>
+          <div class="hint">Upstream changes apply to this running gateway only.</div>
+        </div>
+        <button id="close-upstream-manager" class="secondary" type="button">Close</button>
+      </div>
+
+      <div id="upstream-message"></div>
+
+      <div class="manager-grid">
+        <div>
+          <h3>Registered Upstreams</h3>
+          <div id="upstream-manager-list" class="upstream-cards"></div>
+        </div>
+
+        <form id="upstream-form" class="form-stack">
+          <h3 id="upstream-form-title">Add Upstream Server</h3>
+          <div class="field">
+            <label for="upstream-template">Template</label>
+            <select id="upstream-template" name="template">
+              <option value="">Custom upstream</option>
+              <option value="filesystem">Filesystem</option>
+              <option value="memory">Memory</option>
+              <option value="github">GitHub</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="upstream-id">ID</label>
+            <input id="upstream-id" name="id" autocomplete="off" required />
+          </div>
+          <div class="field">
+            <label for="upstream-name">Name</label>
+            <input id="upstream-name" name="name" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="upstream-executable">Executable</label>
+            <input id="upstream-executable" name="executable" autocomplete="off" required />
+          </div>
+          <div class="field">
+            <label for="upstream-args">Args</label>
+            <input id="upstream-args" name="args" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="upstream-cwd">CWD</label>
+            <input id="upstream-cwd" name="cwd" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="upstream-env">Env</label>
+            <textarea id="upstream-env" name="env" spellcheck="false"></textarea>
+          </div>
+          <div class="field">
+            <label for="upstream-json">Generated JSON</label>
+            <textarea id="upstream-json" class="readonly" name="upstream_json" spellcheck="false" readonly></textarea>
+          </div>
+          <div class="actions">
+            <button id="save-upstream" class="primary" type="submit">Add Upstream</button>
+            <button id="cancel-upstream-edit" class="secondary" type="button">Clear</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
     <script>
       const el = (id) => document.getElementById(id);
+      let currentStatus = { upstreams: [], sessions: [], tools: [], traces: [] };
+      let managerOpen = false;
+      let editingUpstreamId = null;
+
+      const upstreamTemplates = {
+        filesystem: {
+          id: 'filesystem',
+          name: 'Filesystem',
+          executable: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+          cwd: '',
+          env: {},
+        },
+        memory: {
+          id: 'memory',
+          name: 'Memory',
+          executable: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-memory'],
+          cwd: '',
+          env: {},
+        },
+        github: {
+          id: 'github',
+          name: 'GitHub',
+          executable: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-github'],
+          cwd: '',
+          env: {
+            GITHUB_PERSONAL_ACCESS_TOKEN: '',
+          },
+        },
+      };
+
       const list = (id, items) => {
         const node = el(id);
         node.innerHTML = '';
@@ -54,19 +190,302 @@
         }
       };
 
+      const showMessage = (message, type = 'info') => {
+        const node = el('upstream-message');
+        node.innerHTML = '';
+        if (!message) {
+          return;
+        }
+        const notice = document.createElement('div');
+        notice.className = `notice ${type}`;
+        notice.textContent = message;
+        node.appendChild(notice);
+      };
+
+      const splitArgs = (value) => {
+        const args = [];
+        const pattern = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|(\S+)/g;
+        let match;
+        while ((match = pattern.exec(value)) !== null) {
+          args.push((match[1] ?? match[2] ?? match[3]).replace(/\\(["'\\])/g, '$1'));
+        }
+        return args;
+      };
+
+      const shellQuote = (value) => {
+        if (!value) {
+          return '';
+        }
+        return /\s/.test(value) ? JSON.stringify(value) : value;
+      };
+
+      const parseEnv = (value) => {
+        const env = {};
+        for (const rawLine of value.split('\n')) {
+          const line = rawLine.trim();
+          if (!line) {
+            continue;
+          }
+          const separator = line.indexOf('=');
+          if (separator === -1) {
+            throw new Error(`Env line must be KEY=VALUE: ${line}`);
+          }
+          env[line.slice(0, separator).trim()] = line.slice(separator + 1).trim();
+        }
+        return Object.keys(env).length ? env : undefined;
+      };
+
+      const buildUpstreamDefinition = () => {
+        const id = el('upstream-id').value.trim();
+        const name = el('upstream-name').value.trim();
+        const executable = el('upstream-executable').value.trim();
+        const args = splitArgs(el('upstream-args').value.trim());
+        const cwd = el('upstream-cwd').value.trim();
+        const env = parseEnv(el('upstream-env').value);
+
+        return {
+          id,
+          type: 'stdio',
+          ...(name ? { name } : {}),
+          executable,
+          ...(args.length ? { args } : {}),
+          ...(cwd ? { cwd } : {}),
+          ...(env ? { env } : {}),
+        };
+      };
+
+      const setFormValues = (definition) => {
+        el('upstream-id').value = definition.id ?? '';
+        el('upstream-name').value = definition.name ?? '';
+        el('upstream-executable').value = definition.executable ?? '';
+        el('upstream-args').value = (definition.args ?? []).map(shellQuote).join(' ');
+        el('upstream-cwd').value = definition.cwd ?? '';
+        el('upstream-env').value = Object.entries(definition.env ?? {})
+          .map(([key, value]) => `${key}=${value}`)
+          .join('\n');
+        updateGeneratedJson();
+      };
+
+      const updateGeneratedJson = () => {
+        try {
+          el('upstream-json').value = JSON.stringify(buildUpstreamDefinition(), null, 2);
+        } catch (error) {
+          el('upstream-json').value = error.message;
+        }
+      };
+
+      const resetUpstreamForm = () => {
+        editingUpstreamId = null;
+        el('upstream-form-title').textContent = 'Add Upstream Server';
+        el('save-upstream').textContent = 'Add Upstream';
+        el('upstream-id').readOnly = false;
+        el('upstream-template').value = '';
+        el('upstream-form').reset();
+        updateGeneratedJson();
+      };
+
+      const renderManager = () => {
+        const manager = el('upstream-manager');
+        const panel = el('upstreams-panel');
+        manager.classList.toggle('hidden', !managerOpen);
+        panel.setAttribute('aria-expanded', String(managerOpen));
+        if (!managerOpen) {
+          return;
+        }
+
+        const listNode = el('upstream-manager-list');
+        listNode.innerHTML = '';
+
+        if (!currentStatus.upstreams.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'No upstream servers are registered.';
+          listNode.appendChild(empty);
+          return;
+        }
+
+        for (const upstream of currentStatus.upstreams) {
+          const card = document.createElement('article');
+          card.className = 'upstream-card';
+
+          const header = document.createElement('header');
+          const title = document.createElement('h3');
+          title.textContent = upstream.id;
+          const type = document.createElement('code');
+          type.textContent = upstream.type;
+          header.append(title, type);
+
+          const meta = document.createElement('div');
+          meta.className = 'upstream-meta';
+          meta.textContent = `${upstream.name} - tools: ${upstream.tool_count}`;
+
+          const file = document.createElement('div');
+          file.className = 'upstream-file';
+          if (upstream.type === 'stdio') {
+            file.textContent = `Command: ${[upstream.executable, ...(upstream.args ?? [])].filter(Boolean).join(' ')}`;
+          } else {
+            file.textContent = upstream.source_file ? `File: ${upstream.source_file}` : 'Source: inline JSON';
+          }
+
+          const actions = document.createElement('div');
+          actions.className = 'actions';
+
+          const edit = document.createElement('button');
+          edit.className = 'secondary';
+          edit.type = 'button';
+          edit.textContent = 'Edit';
+          edit.disabled = upstream.type !== 'stdio';
+          edit.addEventListener('click', async () => {
+            await editStdioUpstream(upstream.id);
+          });
+
+          const remove = document.createElement('button');
+          remove.className = 'danger';
+          remove.type = 'button';
+          remove.textContent = 'Remove';
+          remove.addEventListener('click', async () => {
+            if (!window.confirm(`Remove upstream '${upstream.id}'?`)) {
+              return;
+            }
+            await removeUpstream(upstream.id);
+          });
+
+          actions.append(edit, remove);
+          card.append(header, meta, file, actions);
+          listNode.appendChild(card);
+        }
+      };
+
+      const openManager = () => {
+        managerOpen = true;
+        renderManager();
+      };
+
+      const closeManager = () => {
+        managerOpen = false;
+        showMessage('');
+        renderManager();
+      };
+
+      async function editStdioUpstream(id) {
+        showMessage('Loading upstream config...', 'info');
+        try {
+          const response = await fetch(`/api/upstreams/${encodeURIComponent(id)}/stdio`);
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const definition = await response.json();
+          editingUpstreamId = id;
+          el('upstream-form-title').textContent = `Edit ${id}`;
+          el('save-upstream').textContent = 'Update Upstream';
+          el('upstream-template').value = '';
+          setFormValues(definition);
+          el('upstream-id').readOnly = true;
+          showMessage('');
+        } catch (error) {
+          showMessage(`Unable to load upstream config: ${error.message}`, 'error');
+        }
+      }
+
       async function refresh() {
         const response = await fetch('/api/status');
-        const status = await response.json();
+        currentStatus = await response.json();
 
-        el('gateway-status').textContent = `Gateway: ${status.running ? 'running' : 'stopped'}`;
-        list('upstreams', status.upstreams.map((u) => `${u.id} (${u.type}, tools: ${u.tool_count})`));
-        list('sessions', status.sessions.map((s) => `${s.session_id}: ${s.status}`));
-        list('tools', status.tools.map((t) => t.exposed_name));
+        el('gateway-status').textContent = `Gateway: ${currentStatus.running ? 'running' : 'stopped'}`;
+        list('upstreams', currentStatus.upstreams.map((u) => `${u.id} (${u.type}, tools: ${u.tool_count})`));
+        list('sessions', currentStatus.sessions.map((s) => `${s.session_id}: ${s.status}`));
+        list('tools', currentStatus.tools.map((t) => t.exposed_name));
         list(
           'traces',
-          status.traces.slice(0, 20).map((t) => `${t.method} from ${t.session_id} -> ${t.status}${t.exposed_tool_name ? ` (${t.exposed_tool_name})` : ''}`),
+          currentStatus.traces.slice(0, 20).map((t) => `${t.method} from ${t.session_id} -> ${t.status}${t.exposed_tool_name ? ` (${t.exposed_tool_name})` : ''}`),
         );
+        renderManager();
       }
+
+      async function saveUpstream(event) {
+        event.preventDefault();
+        let definition;
+        try {
+          definition = buildUpstreamDefinition();
+        } catch (error) {
+          showMessage(`Upstream config is invalid: ${error.message}`, 'error');
+          return;
+        }
+
+        if (!definition.id || !definition.executable) {
+          showMessage('ID and executable are required.', 'error');
+          return;
+        }
+
+        showMessage('Saving upstream...', 'info');
+        try {
+          const response = await fetch('/api/upstreams/stdio', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(definition),
+          });
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+          const action = editingUpstreamId ? 'updated' : 'added';
+          const id = definition.id;
+          resetUpstreamForm();
+          await refresh();
+          showMessage(`Upstream '${id}' ${action}.`, 'success');
+        } catch (error) {
+          showMessage(`Unable to save upstream: ${error.message}`, 'error');
+        }
+      }
+
+      async function removeUpstream(id) {
+        showMessage('Removing upstream...', 'info');
+        try {
+          const response = await fetch(`/api/upstreams/${encodeURIComponent(id)}`, { method: 'DELETE' });
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+          if (editingUpstreamId === id) {
+            resetUpstreamForm();
+          }
+          await refresh();
+          showMessage(`Upstream '${id}' removed.`, 'success');
+        } catch (error) {
+          showMessage(`Unable to remove upstream: ${error.message}`, 'error');
+        }
+      }
+
+      el('upstreams-panel').addEventListener('click', openManager);
+      el('upstreams-panel').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openManager();
+        }
+      });
+      el('close-upstream-manager').addEventListener('click', closeManager);
+      el('upstream-form').addEventListener('submit', saveUpstream);
+      el('upstream-template').addEventListener('change', () => {
+        const template = upstreamTemplates[el('upstream-template').value];
+        if (!template) {
+          updateGeneratedJson();
+          return;
+        }
+
+        editingUpstreamId = null;
+        el('upstream-form-title').textContent = 'Add Upstream Server';
+        el('save-upstream').textContent = 'Add Upstream';
+        el('upstream-id').readOnly = false;
+        setFormValues(template);
+        showMessage('');
+      });
+      for (const input of ['upstream-id', 'upstream-name', 'upstream-executable', 'upstream-args', 'upstream-cwd', 'upstream-env']) {
+        el(input).addEventListener('input', updateGeneratedJson);
+      }
+      el('cancel-upstream-edit').addEventListener('click', () => {
+        resetUpstreamForm();
+        showMessage('');
+      });
+      updateGeneratedJson();
 
       refresh().catch((error) => {
         el('gateway-status').textContent = `Gateway: error (${error.message})`;

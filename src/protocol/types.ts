@@ -33,6 +33,15 @@ export interface MockUpstreamFile {
   tools: MockToolDefinition[];
 }
 
+export interface StdioUpstreamDefinition {
+  id: string;
+  name?: string;
+  executable: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
 export interface UpstreamTool {
   name: string;
   description?: string;

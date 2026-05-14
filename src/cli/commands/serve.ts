@@ -6,12 +6,20 @@ export async function runServeCommand(): Promise<void> {
   const port = Number(process.env.MCP_MUX_PORT ?? '8787');
 
   const gateway = new GatewayServer();
-  await startHttpApi(gateway, { host, port });
+  const server = await startHttpApi(gateway, { host, port });
 
   process.stdout.write(`mcp-mux gateway running on http://${host}:${port}\n`);
   process.stdout.write(`Web UI: http://${host}:${port}\n`);
 
-  await new Promise(() => {
-    // intentionally never resolves while process is running
+  await new Promise<void>((resolve) => {
+    const keepAlive = setInterval(() => undefined, 2 ** 30);
+    const stop = (): void => {
+      clearInterval(keepAlive);
+      gateway.upstreams.closeAll();
+      server.close(() => resolve());
+    };
+
+    process.once('SIGTERM', stop);
+    process.once('SIGINT', stop);
   });
 }

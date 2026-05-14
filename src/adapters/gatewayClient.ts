@@ -51,6 +51,39 @@ export class GatewayClient {
     });
   }
 
+  async addMockUpstreamJson(id: string, mockJson: string): Promise<void> {
+    await this.request('/api/upstreams/mock', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ id, mock_json: mockJson }),
+    });
+  }
+
+  async addStdioUpstream(definition: {
+    id: string;
+    name?: string;
+    executable: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+  }): Promise<void> {
+    await this.request('/api/upstreams/stdio', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(definition),
+    });
+  }
+
+  async removeUpstream(id: string): Promise<void> {
+    await this.request(`/api/upstreams/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  }
+
   private async request(path: string, init: RequestInit): Promise<Response> {
     let response: Response;
     try {

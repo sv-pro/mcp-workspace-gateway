@@ -4,7 +4,7 @@ import path from 'node:path';
 import { GatewayServer } from '../server/gatewayServer';
 
 test('router handles initialize and tools/list over gateway session', async () => {
-  const gateway = new GatewayServer();
+  const gateway = new GatewayServer({ upstreamsFile: null });
   const repoRoot = path.resolve(__dirname, '../..');
 
   await gateway.upstreams.addMock('jira', path.join(repoRoot, 'examples/mock-upstreams/jira.json'));

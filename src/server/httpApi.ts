@@ -45,12 +45,101 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
       }
 
       if (method === 'POST' && pathname === '/api/upstreams/mock') {
-        const body = await readJson<{ id?: string; file?: string }>(req);
-        if (!body.id || !body.file) {
-          return writeJson(res, 400, { error: 'id and file are required' });
+        const body = await readJson<{ id?: string; file?: string; mock_json?: string }>(req);
+        if (!body.id || (!body.file && !body.mock_json)) {
+          return writeJson(res, 400, { error: 'id and file or mock_json are required' });
         }
-        await gateway.upstreams.addMock(body.id, body.file);
+
+        if (body.mock_json) {
+          gateway.upstreams.addMockDefinition(body.id, JSON.parse(body.mock_json));
+          return writeJson(res, 201, { ok: true });
+        }
+
+        await gateway.upstreams.addMock(body.id, body.file!);
         return writeJson(res, 201, { ok: true });
+      }
+
+      if (method === 'POST' && pathname === '/api/upstreams/stdio') {
+        const body = await readJson<{
+          id?: string;
+          name?: string;
+          executable?: string;
+          args?: string[];
+          cwd?: string;
+          env?: Record<string, string>;
+        }>(req);
+        if (!body.id || !body.executable) {
+          return writeJson(res, 400, { error: 'id and executable are required' });
+        }
+
+        gateway.upstreams.addStdioDefinition({
+          id: body.id,
+          name: body.name,
+          executable: body.executable,
+          args: body.args,
+          cwd: body.cwd,
+          env: body.env,
+        });
+        return writeJson(res, 201, { ok: true });
+      }
+
+      const upstreamPathParts = pathname.split('/');
+      if (
+        method === 'GET' &&
+        upstreamPathParts[1] === 'api' &&
+        upstreamPathParts[2] === 'upstreams' &&
+        upstreamPathParts.length === 5 &&
+        upstreamPathParts[4] === 'mock'
+      ) {
+        const upstreamId = decodeURIComponent(upstreamPathParts[3] ?? '');
+        if (!upstreamId) {
+          return writeJson(res, 400, { error: 'id is required' });
+        }
+
+        const definition = gateway.upstreams.getMockDefinition(upstreamId);
+        if (!definition) {
+          return writeJson(res, 404, { error: `Mock upstream not found: ${upstreamId}` });
+        }
+
+        return writeJson(res, 200, definition);
+      }
+
+      if (
+        method === 'GET' &&
+        upstreamPathParts[1] === 'api' &&
+        upstreamPathParts[2] === 'upstreams' &&
+        upstreamPathParts.length === 5 &&
+        upstreamPathParts[4] === 'stdio'
+      ) {
+        const upstreamId = decodeURIComponent(upstreamPathParts[3] ?? '');
+        if (!upstreamId) {
+          return writeJson(res, 400, { error: 'id is required' });
+        }
+
+        const definition = gateway.upstreams.getStdioDefinition(upstreamId);
+        if (!definition) {
+          return writeJson(res, 404, { error: `Stdio upstream not found: ${upstreamId}` });
+        }
+
+        return writeJson(res, 200, definition);
+      }
+
+      if (
+        method === 'DELETE' &&
+        upstreamPathParts[1] === 'api' &&
+        upstreamPathParts[2] === 'upstreams' &&
+        upstreamPathParts.length === 4
+      ) {
+        const upstreamId = decodeURIComponent(upstreamPathParts[3] ?? '');
+        if (!upstreamId) {
+          return writeJson(res, 400, { error: 'id is required' });
+        }
+
+        if (!gateway.upstreams.remove(upstreamId)) {
+          return writeJson(res, 404, { error: `Upstream not found: ${upstreamId}` });
+        }
+
+        return writeJson(res, 200, { ok: true });
       }
 
       if (method === 'POST' && pathname.startsWith('/api/sessions/') && pathname.endsWith('/connect')) {

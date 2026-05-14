@@ -1,21 +1,101 @@
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { MockUpstreamAdapter } from '../adapters/upstream/mockUpstreamAdapter';
-import { UpstreamAdapter } from '../protocol/types';
+import { StdioUpstreamAdapter } from '../adapters/upstream/stdioUpstreamAdapter';
+import { MockUpstreamFile, StdioUpstreamDefinition, UpstreamAdapter } from '../protocol/types';
 
 export interface UpstreamSummary {
   id: string;
   type: UpstreamAdapter['type'];
   name: string;
   tool_count: number;
+  source_file?: string;
+  executable?: string;
+  args?: string[];
+  cwd?: string;
+}
+
+interface PersistedRegistry {
+  version: 1;
+  upstreams: PersistedUpstream[];
+}
+
+type PersistedUpstream =
+  | {
+      type: 'mock';
+      id: string;
+      file?: string;
+      definition?: MockUpstreamFile;
+    }
+  | {
+      type: 'stdio';
+      definition: StdioUpstreamDefinition;
+    };
+
+export interface UpstreamRegistryOptions {
+  persistenceFile?: string | null;
 }
 
 export class UpstreamRegistry {
   private readonly upstreams = new Map<string, UpstreamAdapter>();
+  private readonly persistenceFile: string | null;
+
+  constructor(options: UpstreamRegistryOptions = {}) {
+    this.persistenceFile = options.persistenceFile ?? null;
+    this.loadPersisted();
+  }
 
   async addMock(id: string, file: string): Promise<void> {
     const resolved = path.resolve(process.cwd(), file);
     const adapter = await MockUpstreamAdapter.fromFile(id, resolved);
-    this.upstreams.set(id, adapter);
+    this.set(id, adapter, true);
+  }
+
+  addMockDefinition(id: string, definition: MockUpstreamFile): void {
+    const adapter = MockUpstreamAdapter.fromDefinition(id, definition);
+    this.set(id, adapter, true);
+  }
+
+  getMockDefinition(id: string): MockUpstreamFile | undefined {
+    const adapter = this.upstreams.get(id);
+    if (!(adapter instanceof MockUpstreamAdapter)) {
+      return undefined;
+    }
+
+    return adapter.toDefinition();
+  }
+
+  addStdioDefinition(definition: StdioUpstreamDefinition): void {
+    const adapter = StdioUpstreamAdapter.fromDefinition(definition);
+    this.set(definition.id, adapter, true);
+  }
+
+  getStdioDefinition(id: string): StdioUpstreamDefinition | undefined {
+    const adapter = this.upstreams.get(id);
+    if (!(adapter instanceof StdioUpstreamAdapter)) {
+      return undefined;
+    }
+
+    return adapter.toDefinition();
+  }
+
+  remove(id: string): boolean {
+    const adapter = this.upstreams.get(id);
+    if (!adapter) {
+      return false;
+    }
+
+    this.closeAdapter(adapter);
+    const removed = this.upstreams.delete(id);
+    this.persist();
+    return removed;
+  }
+
+  closeAll(): void {
+    for (const adapter of this.upstreams.values()) {
+      this.closeAdapter(adapter);
+    }
+    this.upstreams.clear();
   }
 
   get(id: string): UpstreamAdapter | undefined {
@@ -29,14 +109,123 @@ export class UpstreamRegistry {
   async listSummaries(): Promise<UpstreamSummary[]> {
     const adapters = this.listAdapters();
     const summaries = await Promise.all(
-      adapters.map(async (adapter) => ({
-        id: adapter.id,
-        type: adapter.type,
-        name: adapter.name,
-        tool_count: (await adapter.listTools()).length,
-      })),
+      adapters.map(async (adapter) => {
+        const summary: UpstreamSummary = {
+          id: adapter.id,
+          type: adapter.type,
+          name: adapter.name,
+          tool_count: (await adapter.listTools()).length,
+        };
+
+        if (adapter instanceof MockUpstreamAdapter && adapter.sourceFile) {
+          summary.source_file = adapter.sourceFile;
+        }
+
+        if (adapter instanceof StdioUpstreamAdapter) {
+          summary.executable = adapter.executable;
+          if (adapter.args.length) {
+            summary.args = adapter.args;
+          }
+          if (adapter.cwd) {
+            summary.cwd = adapter.cwd;
+          }
+        }
+
+        return summary;
+      }),
     );
 
     return summaries;
+  }
+
+  private set(id: string, adapter: UpstreamAdapter, shouldPersist: boolean): void {
+    const existing = this.upstreams.get(id);
+    if (existing) {
+      this.closeAdapter(existing);
+    }
+    this.upstreams.set(id, adapter);
+    if (shouldPersist) {
+      this.persist();
+    }
+  }
+
+  private closeAdapter(adapter: UpstreamAdapter): void {
+    if (adapter instanceof StdioUpstreamAdapter) {
+      adapter.close();
+    }
+  }
+
+  private loadPersisted(): void {
+    if (!this.persistenceFile || !existsSync(this.persistenceFile)) {
+      return;
+    }
+
+    const persisted = JSON.parse(readFileSync(this.persistenceFile, 'utf8')) as PersistedRegistry;
+    if (persisted.version !== 1 || !Array.isArray(persisted.upstreams)) {
+      throw new Error(`Invalid upstream registry file: ${this.persistenceFile}`);
+    }
+
+    for (const upstream of persisted.upstreams) {
+      if (upstream.type === 'mock') {
+        if (upstream.file) {
+          this.set(upstream.id, MockUpstreamAdapter.fromFileSync(upstream.id, upstream.file), false);
+          continue;
+        }
+
+        if (!upstream.definition) {
+          throw new Error(`Invalid persisted mock upstream '${upstream.id}': file or definition is required`);
+        }
+
+        this.set(upstream.id, MockUpstreamAdapter.fromDefinition(upstream.id, upstream.definition), false);
+        continue;
+      }
+
+      if (upstream.type === 'stdio') {
+        this.set(upstream.definition.id, StdioUpstreamAdapter.fromDefinition(upstream.definition), false);
+      }
+    }
+  }
+
+  private persist(): void {
+    if (!this.persistenceFile) {
+      return;
+    }
+
+    const directory = path.dirname(this.persistenceFile);
+    mkdirSync(directory, { recursive: true });
+    const payload: PersistedRegistry = {
+      version: 1,
+      upstreams: this.listAdapters().map((adapter) => this.toPersisted(adapter)),
+    };
+    const temporaryFile = `${this.persistenceFile}.tmp`;
+    writeFileSync(temporaryFile, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    renameSync(temporaryFile, this.persistenceFile);
+  }
+
+  private toPersisted(adapter: UpstreamAdapter): PersistedUpstream {
+    if (adapter instanceof MockUpstreamAdapter) {
+      if (adapter.sourceFile) {
+        return {
+          type: 'mock',
+          id: adapter.id,
+          file: adapter.sourceFile,
+        };
+      }
+
+      return {
+        type: 'mock',
+        id: adapter.id,
+        definition: adapter.toDefinition(),
+      };
+    }
+
+    if (adapter instanceof StdioUpstreamAdapter) {
+      return {
+        type: 'stdio',
+        definition: adapter.toDefinition(),
+      };
+    }
+
+    throw new Error(`Unsupported upstream type for persistence: ${adapter.type}`);
   }
 }
