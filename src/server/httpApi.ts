@@ -89,6 +89,65 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
         upstreamPathParts[1] === 'api' &&
         upstreamPathParts[2] === 'upstreams' &&
         upstreamPathParts.length === 5 &&
+        upstreamPathParts[4] === 'diagnostics'
+      ) {
+        const upstreamId = decodeURIComponent(upstreamPathParts[3] ?? '');
+        if (!upstreamId) {
+          return writeJson(res, 400, { error: 'id is required' });
+        }
+
+        const diagnostics = gateway.upstreams.getDiagnostics(upstreamId);
+        if (!diagnostics) {
+          return writeJson(res, 404, { error: `Upstream not found: ${upstreamId}` });
+        }
+
+        return writeJson(res, 200, diagnostics);
+      }
+
+      if (
+        method === 'POST' &&
+        upstreamPathParts[1] === 'api' &&
+        upstreamPathParts[2] === 'upstreams' &&
+        upstreamPathParts.length === 5 &&
+        upstreamPathParts[4] === 'test'
+      ) {
+        const upstreamId = decodeURIComponent(upstreamPathParts[3] ?? '');
+        if (!upstreamId) {
+          return writeJson(res, 400, { error: 'id is required' });
+        }
+
+        const result = await gateway.upstreams.test(upstreamId);
+        if (!result) {
+          return writeJson(res, 404, { error: `Upstream not found: ${upstreamId}` });
+        }
+
+        return writeJson(res, 200, result);
+      }
+
+      if (
+        method === 'POST' &&
+        upstreamPathParts[1] === 'api' &&
+        upstreamPathParts[2] === 'upstreams' &&
+        upstreamPathParts.length === 5 &&
+        upstreamPathParts[4] === 'restart'
+      ) {
+        const upstreamId = decodeURIComponent(upstreamPathParts[3] ?? '');
+        if (!upstreamId) {
+          return writeJson(res, 400, { error: 'id is required' });
+        }
+
+        if (!gateway.upstreams.restart(upstreamId)) {
+          return writeJson(res, 404, { error: `Restartable upstream not found: ${upstreamId}` });
+        }
+
+        return writeJson(res, 200, { ok: true });
+      }
+
+      if (
+        method === 'GET' &&
+        upstreamPathParts[1] === 'api' &&
+        upstreamPathParts[2] === 'upstreams' &&
+        upstreamPathParts.length === 5 &&
         upstreamPathParts[4] === 'mock'
       ) {
         const upstreamId = decodeURIComponent(upstreamPathParts[3] ?? '');

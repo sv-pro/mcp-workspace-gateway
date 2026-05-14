@@ -12,6 +12,10 @@ export class StdioUpstreamAdapter implements UpstreamAdapter {
   readonly type = 'stdio' as const;
   private child: ChildProcessWithoutNullStreams | null = null;
   private stderr = '';
+  private initialized = false;
+  private startedAt: string | null = null;
+  private lastError: string | null = null;
+  private lastExit: { code: number | null; signal: NodeJS.Signals | null; timestamp: string } | null = null;
   private nextRequestId = 1;
   private initializePromise: Promise<void> | null = null;
   private readonly pendingRequests = new Map<number, PendingRequest>();
@@ -71,19 +75,45 @@ export class StdioUpstreamAdapter implements UpstreamAdapter {
 
   close(): void {
     if (!this.child) {
+      this.initializePromise = null;
+      this.initialized = false;
       return;
     }
 
+    const child = this.child;
+    this.rejectPending(new Error(`Stdio upstream '${this.id}' stopped`));
     if (process.platform !== 'win32' && this.child.pid) {
       try {
         process.kill(-this.child.pid);
       } catch {
-        this.child.kill();
+        child.kill();
       }
     } else {
-      this.child.kill();
+      child.kill();
     }
     this.child = null;
+    this.initializePromise = null;
+    this.initialized = false;
+  }
+
+  diagnostics(): Record<string, unknown> {
+    return {
+      id: this.id,
+      type: this.type,
+      name: this.name,
+      status: this.child ? 'running' : 'stopped',
+      pid: this.child?.pid ?? null,
+      command: [this.executable, ...this.args].join(' '),
+      executable: this.executable,
+      args: this.args,
+      cwd: this.cwd ?? process.cwd(),
+      initialized: this.initialized,
+      started_at: this.startedAt,
+      pending_requests: this.pendingRequests.size,
+      stderr_tail: this.stderr.trim() || null,
+      last_error: this.lastError,
+      last_exit: this.lastExit,
+    };
   }
 
   private async initialize(): Promise<void> {
@@ -101,6 +131,7 @@ export class StdioUpstreamAdapter implements UpstreamAdapter {
           version: '0.1.0',
         },
       });
+      this.initialized = true;
       this.notify('notifications/initialized', {});
     })();
 
@@ -120,6 +151,9 @@ export class StdioUpstreamAdapter implements UpstreamAdapter {
       },
       detached: process.platform !== 'win32',
     });
+    this.startedAt = new Date().toISOString();
+    this.lastError = null;
+    this.lastExit = null;
 
     const rl = readline.createInterface({
       input: this.child.stdout,
@@ -138,16 +172,22 @@ export class StdioUpstreamAdapter implements UpstreamAdapter {
     });
 
     this.child.once('error', (error) => {
+      this.lastError = error.message;
       this.rejectPending(error);
       this.child = null;
       this.initializePromise = null;
+      this.initialized = false;
     });
 
     this.child.once('exit', (code, signal) => {
       const suffix = this.stderr.trim() ? `: ${this.stderr.trim()}` : '';
-      this.rejectPending(new Error(`Stdio upstream '${this.id}' exited (${signal ?? code})${suffix}`));
+      const error = new Error(`Stdio upstream '${this.id}' exited (${signal ?? code})${suffix}`);
+      this.lastError = error.message;
+      this.lastExit = { code, signal, timestamp: new Date().toISOString() };
+      this.rejectPending(error);
       this.child = null;
       this.initializePromise = null;
+      this.initialized = false;
     });
   }
 

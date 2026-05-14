@@ -31,6 +31,7 @@
       .upstream-card h3 { margin: 0; }
       .upstream-meta { color: #475569; margin: 8px 0; }
       .upstream-file { word-break: break-all; }
+      .debug-output { background: #0f172a; border-radius: 6px; color: #e2e8f0; margin-top: 10px; max-height: 260px; overflow: auto; padding: 10px; white-space: pre-wrap; word-break: break-word; }
       .actions { display: flex; flex-wrap: wrap; gap: 8px; }
       .form-stack { display: grid; gap: 10px; }
       .field { display: grid; gap: 4px; }
@@ -144,6 +145,9 @@
       let currentStatus = { upstreams: [], sessions: [], tools: [], traces: [] };
       let managerOpen = false;
       let editingUpstreamId = null;
+      const upstreamDebugOutputs = new Map();
+      const upstreamDebugScrollTops = new Map();
+      let managerRenderSignature = '';
 
       const upstreamTemplates = {
         filesystem: {
@@ -284,7 +288,27 @@
         updateGeneratedJson();
       };
 
-      const renderManager = () => {
+      const managerSignature = () =>
+        JSON.stringify(
+          currentStatus.upstreams.map((upstream) => ({
+            id: upstream.id,
+            type: upstream.type,
+            name: upstream.name,
+            tool_count: upstream.tool_count,
+            source_file: upstream.source_file,
+            executable: upstream.executable,
+            args: upstream.args,
+            cwd: upstream.cwd,
+          })),
+        );
+
+      const captureDebugScrollTops = () => {
+        for (const node of document.querySelectorAll('.debug-output[data-upstream-id]')) {
+          upstreamDebugScrollTops.set(node.dataset.upstreamId, node.scrollTop);
+        }
+      };
+
+      const renderManager = (force = false) => {
         const manager = el('upstream-manager');
         const panel = el('upstreams-panel');
         manager.classList.toggle('hidden', !managerOpen);
@@ -294,6 +318,13 @@
         }
 
         const listNode = el('upstream-manager-list');
+        const signature = managerSignature();
+        if (!force && signature === managerRenderSignature && listNode.childElementCount > 0) {
+          return;
+        }
+
+        captureDebugScrollTops();
+        managerRenderSignature = signature;
         listNode.innerHTML = '';
 
         if (!currentStatus.upstreams.length) {
@@ -330,6 +361,17 @@
           const actions = document.createElement('div');
           actions.className = 'actions';
 
+          const output = document.createElement('pre');
+          output.className = 'debug-output hidden';
+          output.dataset.upstreamId = upstream.id;
+          if (upstreamDebugOutputs.has(upstream.id)) {
+            output.textContent = upstreamDebugOutputs.get(upstream.id);
+            output.classList.remove('hidden');
+          }
+          output.addEventListener('scroll', () => {
+            upstreamDebugScrollTops.set(upstream.id, output.scrollTop);
+          });
+
           const edit = document.createElement('button');
           edit.className = 'secondary';
           edit.type = 'button';
@@ -337,6 +379,31 @@
           edit.disabled = upstream.type !== 'stdio';
           edit.addEventListener('click', async () => {
             await editStdioUpstream(upstream.id);
+          });
+
+          const diagnostics = document.createElement('button');
+          diagnostics.className = 'secondary';
+          diagnostics.type = 'button';
+          diagnostics.textContent = 'Diagnostics';
+          diagnostics.addEventListener('click', async () => {
+            await showUpstreamDiagnostics(upstream.id, output);
+          });
+
+          const test = document.createElement('button');
+          test.className = 'secondary';
+          test.type = 'button';
+          test.textContent = 'Test';
+          test.addEventListener('click', async () => {
+            await testUpstream(upstream.id, output);
+          });
+
+          const restart = document.createElement('button');
+          restart.className = 'secondary';
+          restart.type = 'button';
+          restart.textContent = 'Restart';
+          restart.disabled = upstream.type !== 'stdio';
+          restart.addEventListener('click', async () => {
+            await restartUpstream(upstream.id, output);
           });
 
           const remove = document.createElement('button');
@@ -350,15 +417,19 @@
             await removeUpstream(upstream.id);
           });
 
-          actions.append(edit, remove);
-          card.append(header, meta, file, actions);
+          actions.append(edit, diagnostics, test, restart, remove);
+          card.append(header, meta, file, actions, output);
           listNode.appendChild(card);
+          const scrollTop = upstreamDebugScrollTops.get(upstream.id) ?? 0;
+          requestAnimationFrame(() => {
+            output.scrollTop = scrollTop;
+          });
         }
       };
 
       const openManager = () => {
         managerOpen = true;
-        renderManager();
+        renderManager(true);
       };
 
       const closeManager = () => {
@@ -438,6 +509,61 @@
         }
       }
 
+      const showDebugOutput = (id, node, payload) => {
+        const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+        upstreamDebugOutputs.set(id, text);
+        if (node.textContent !== text) {
+          node.textContent = text;
+          upstreamDebugScrollTops.set(id, 0);
+        }
+        node.scrollTop = upstreamDebugScrollTops.get(id) ?? 0;
+        node.classList.remove('hidden');
+      };
+
+      async function showUpstreamDiagnostics(id, output) {
+        showDebugOutput(id, output, 'Loading diagnostics...');
+        try {
+          const response = await fetch(`/api/upstreams/${encodeURIComponent(id)}/diagnostics`);
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(JSON.stringify(payload));
+          }
+          showDebugOutput(id, output, payload);
+        } catch (error) {
+          showDebugOutput(id, output, `Unable to load diagnostics: ${error.message}`);
+        }
+      }
+
+      async function testUpstream(id, output) {
+        showDebugOutput(id, output, 'Testing upstream...');
+        try {
+          const response = await fetch(`/api/upstreams/${encodeURIComponent(id)}/test`, { method: 'POST' });
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(JSON.stringify(payload));
+          }
+          showDebugOutput(id, output, payload);
+          await refresh();
+        } catch (error) {
+          showDebugOutput(id, output, `Unable to test upstream: ${error.message}`);
+        }
+      }
+
+      async function restartUpstream(id, output) {
+        showDebugOutput(id, output, 'Restarting upstream...');
+        try {
+          const response = await fetch(`/api/upstreams/${encodeURIComponent(id)}/restart`, { method: 'POST' });
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(JSON.stringify(payload));
+          }
+          showDebugOutput(id, output, { ok: true, message: `Restarted '${id}'. It will start again on the next test, tools/list, or tool call.` });
+          await refresh();
+        } catch (error) {
+          showDebugOutput(id, output, `Unable to restart upstream: ${error.message}`);
+        }
+      }
+
       async function removeUpstream(id) {
         showMessage('Removing upstream...', 'info');
         try {
@@ -448,6 +574,8 @@
           if (editingUpstreamId === id) {
             resetUpstreamForm();
           }
+          upstreamDebugOutputs.delete(id);
+          upstreamDebugScrollTops.delete(id);
           await refresh();
           showMessage(`Upstream '${id}' removed.`, 'success');
         } catch (error) {

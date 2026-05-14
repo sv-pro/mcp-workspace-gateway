@@ -195,5 +195,24 @@ test('http api adds stdio upstream config and returns it for editing', async () 
       args: ['-e', fakeMcpServerScript],
       env: { LOG_LEVEL: 'debug' },
     });
+
+    const initialDiagnosticsResponse = await fetch(`${baseUrl}/api/upstreams/fake/diagnostics`);
+    assert.equal(initialDiagnosticsResponse.status, 200);
+    assert.equal(((await initialDiagnosticsResponse.json()) as { status: string }).status, 'running');
+
+    const testResponse = await fetch(`${baseUrl}/api/upstreams/fake/test`, { method: 'POST' });
+    assert.equal(testResponse.status, 200);
+    const testResult = (await testResponse.json()) as { ok: boolean; tool_count: number; tools: Array<{ name: string }> };
+    assert.equal(testResult.ok, true);
+    assert.equal(testResult.tool_count, 1);
+    assert.deepEqual(testResult.tools.map((tool) => tool.name), ['echo']);
+
+    const restartResponse = await fetch(`${baseUrl}/api/upstreams/fake/restart`, { method: 'POST' });
+    assert.equal(restartResponse.status, 200);
+    assert.deepEqual(await restartResponse.json(), { ok: true });
+
+    const restartedDiagnosticsResponse = await fetch(`${baseUrl}/api/upstreams/fake/diagnostics`);
+    assert.equal(restartedDiagnosticsResponse.status, 200);
+    assert.equal(((await restartedDiagnosticsResponse.json()) as { status: string }).status, 'stopped');
   });
 });

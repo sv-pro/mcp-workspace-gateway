@@ -36,6 +36,15 @@ export interface UpstreamRegistryOptions {
   persistenceFile?: string | null;
 }
 
+export interface UpstreamTestResult {
+  id: string;
+  ok: boolean;
+  duration_ms: number;
+  tool_count?: number;
+  tools?: Array<{ name: string; description?: string }>;
+  error?: string;
+}
+
 export class UpstreamRegistry {
   private readonly upstreams = new Map<string, UpstreamAdapter>();
   private readonly persistenceFile: string | null;
@@ -100,6 +109,73 @@ export class UpstreamRegistry {
 
   get(id: string): UpstreamAdapter | undefined {
     return this.upstreams.get(id);
+  }
+
+  getDiagnostics(id: string): Record<string, unknown> | undefined {
+    const adapter = this.upstreams.get(id);
+    if (!adapter) {
+      return undefined;
+    }
+
+    if (adapter instanceof MockUpstreamAdapter) {
+      return {
+        id: adapter.id,
+        type: adapter.type,
+        name: adapter.name,
+        status: 'ready',
+        source_file: adapter.sourceFile ?? null,
+      };
+    }
+
+    if (adapter instanceof StdioUpstreamAdapter) {
+      return adapter.diagnostics();
+    }
+
+    return {
+      id: adapter.id,
+      type: adapter.type,
+      name: adapter.name,
+      status: 'unknown',
+    };
+  }
+
+  restart(id: string): boolean {
+    const adapter = this.upstreams.get(id);
+    if (!(adapter instanceof StdioUpstreamAdapter)) {
+      return false;
+    }
+
+    adapter.close();
+    return true;
+  }
+
+  async test(id: string): Promise<UpstreamTestResult | undefined> {
+    const adapter = this.upstreams.get(id);
+    if (!adapter) {
+      return undefined;
+    }
+
+    const started = Date.now();
+    try {
+      const tools = await adapter.listTools();
+      return {
+        id,
+        ok: true,
+        duration_ms: Date.now() - started,
+        tool_count: tools.length,
+        tools: tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+        })),
+      };
+    } catch (error) {
+      return {
+        id,
+        ok: false,
+        duration_ms: Date.now() - started,
+        error: (error as Error).message,
+      };
+    }
   }
 
   listAdapters(): UpstreamAdapter[] {
