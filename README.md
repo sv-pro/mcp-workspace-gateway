@@ -14,20 +14,26 @@ MCP clients launch local stdio server commands. This works for single-client
 setups, but falls apart when multiple clients (Inspector, Codex, a web UI) need
 to share one managed workspace of upstream MCP servers.
 
-Without a shared gateway:
+Without a shared gateway, every MCP client becomes its own isolated universe of
+upstream processes, state, and traces.
+
 - Each client spawns its own upstream processes — no coordination, duplicated
   state, no shared traces.
-- There is no place to attach profiles, policies, or approval flows.
+- There is no place to attach session bindings or a shared tool namespace.
 - Restarting a client loses all session context.
 
 ## Solution
 
 Run one long-running gateway process. Each MCP client launches a lightweight
-adapter process that looks like a local stdio MCP server from the client's
-perspective, but is really just a transport bridge into the shared gateway.
+stdio-compatible adapter process that looks like a local MCP server from the
+client's perspective, but is really just a transport bridge into the shared
+gateway.
 
-The gateway owns all state: upstream definitions and instances, sessions,
-tool namespaces, traces.
+The gateway is the authoritative coordinator for upstream definitions and
+instances, sessions, tool namespaces, and traces.
+
+The gateway turns isolated MCP client runtimes into a shared, observable
+workspace substrate.
 
 ## How it fits in the stack
 
@@ -52,10 +58,10 @@ layers above.
 Web UI ───────────────▶│                                │
                        │    MCP Workspace Gateway       │
 Inspector ─┐           │                                │
-           │ stdio     │  upstream templates            │
+           │ stdio     │  upstream prototypes           │
            ▼           │  upstream definitions+instances│──▶ filesystem (stdio)
    mcp-mux client ────▶│  sessions                      │──▶ github (http)
-                       │  profiles / bindings           │──▶ jira (mock)
+                       │  session bindings              │──▶ jira (mock)
 Codex ─────┐           │  tool namespace                │
            │ stdio     │  router + traces               │
            ▼           │                                │
@@ -111,6 +117,14 @@ not sandbox upstream processes from each other or from the host OS.
 See [docs/trust-boundary.md](docs/trust-boundary.md) for details.
 
 ## MVP scope
+
+Each layer of the stack solves a distinct problem:
+
+| Layer | Solves |
+|---|---|
+| **MCP Workspace Gateway** (this project) | coordination, sessions, multiplexing, upstream lifecycle, namespace routing |
+| **Safe MCP Proxy** (future) | governed visibility, policy, approvals, capability shaping |
+| **Agent Hypervisor** (future) | executable world virtualization, deterministic world semantics |
 
 This project is the coordination substrate. It is **not** yet:
 

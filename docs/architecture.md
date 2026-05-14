@@ -23,7 +23,7 @@ Codex ─────┐           │                                  │─�
            │ stdio     │  SessionManager                  │
            ▼           │    (sessions A, B, …)            │
    mcp-mux client ────▶│                                  │
-       (session B)     │  Profiles / Bindings             │
+       (session B)     │  Session Bindings                │
                        │    (session→upstream sets)       │
                        │                                  │
                        │  ToolRegistry                    │
@@ -112,10 +112,11 @@ Source: `src/server/httpApi.ts`
 
 ## Client adapter
 
-`mcp-mux client --session <id>` is a disposable stdio bridge. It reads
-newline-delimited JSON-RPC from stdin, forwards to the gateway via HTTP, and
-writes responses to stdout. It carries no state. MCP hosts (Inspector, Codex,
-etc.) interact with it as if it were a local MCP server.
+`mcp-mux client --session <id>` is a disposable stdio-compatible adapter
+process. It reads newline-delimited JSON-RPC from stdin, forwards to the
+gateway via HTTP, and writes responses to stdout. It carries no state. MCP
+hosts (Inspector, Codex, etc.) see it as a local MCP server; internally it is
+only a transport bridge into the shared gateway.
 
 Source: `src/adapters/stdioClientAdapter.ts`
 
