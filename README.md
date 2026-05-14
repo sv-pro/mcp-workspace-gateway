@@ -1,35 +1,72 @@
 # MCP Workspace Gateway
 
-## Thesis
+**alias: mcp-mux**
 
-Many fake local MCP servers. One real workspace gateway. Many upstream MCP servers.
+```text
+Many fake local MCP servers.
+One real workspace gateway.
+Many upstream MCP servers.
+```
 
 ## Problem
 
-MCP hosts often launch local stdio server commands. This works for simple cases, but it makes it hard to share one managed MCP workspace across multiple clients such as Inspector, Codex, and Web UI.
+MCP clients launch local stdio server commands. This works for single-client
+setups, but falls apart when multiple clients (Inspector, Codex, a web UI) need
+to share one managed workspace of upstream MCP servers.
+
+Without a shared gateway:
+- Each client spawns its own upstream processes — no coordination, duplicated
+  state, no shared traces.
+- There is no place to attach profiles, policies, or approval flows.
+- Restarting a client loses all session context.
 
 ## Solution
 
-Run one long-running gateway. Let each MCP host launch a lightweight CLI adapter that bridges stdio to the gateway.
+Run one long-running gateway process. Each MCP client launches a lightweight
+adapter process that looks like a local stdio MCP server from the client's
+perspective, but is really just a transport bridge into the shared gateway.
 
-## Architecture
+The gateway owns all state: upstream definitions and instances, sessions,
+tool namespaces, traces.
+
+## How it fits in the stack
 
 ```text
-                       ┌────────────────────────┐
-Web UI ───────────────▶│                        │
-                       │  MCP Workspace Gateway │
-Inspector ─┐           │                        │
-           │ stdio     │  - upstream registry   │
-           ▼           │  - sessions            │
-   mcp-mux client ────▶│  - tool namespace      │───▶ Upstream MCP A
-                       │  - routing             │───▶ Upstream MCP B
-Codex ─────┐           │  - traces              │───▶ Upstream MCP C
-           │ stdio     │                        │
-           ▼           └────────────────────────┘
-   mcp-mux client ───────────────▲
-                                 │
-                       gateway session transport
+MCP
+  ↓
+MCP Workspace Gateway (this project)
+  ↓
+Safe MCP Proxy              [future — governs capability visibility]
+  ↓
+Agent Hypervisor            [future — virtualizes executable worlds]
 ```
+
+MCP Workspace Gateway is the **substrate**. It solves coordination.
+It does not solve governance or world virtualization — those belong to the
+layers above.
+
+## Architecture in one diagram
+
+```text
+                       ┌────────────────────────────────┐
+Web UI ───────────────▶│                                │
+                       │    MCP Workspace Gateway       │
+Inspector ─┐           │                                │
+           │ stdio     │  upstream templates            │
+           ▼           │  upstream definitions+instances│──▶ filesystem (stdio)
+   mcp-mux client ────▶│  sessions                      │──▶ github (http)
+                       │  profiles / bindings           │──▶ jira (mock)
+Codex ─────┐           │  tool namespace                │
+           │ stdio     │  router + traces               │
+           ▼           │                                │
+   mcp-mux client ────▶│                                │
+                       └────────────────────────────────┘
+```
+
+See [docs/ontology.md](docs/ontology.md) for the full concept model
+(Prototype → Definition → Instance → Session → Binding → Projection → World).
+
+See [docs/architecture.md](docs/architecture.md) for component detail.
 
 ## Quickstart
 
@@ -41,42 +78,47 @@ Codex ─────┐           │  - traces              │───▶ Up
    npx mcp-mux serve
    ```
 
-2. Add mock upstreams from another terminal:
+2. Register upstream definitions:
 
    ```bash
    npx mcp-mux upstream add-mock filesystem examples/mock-upstreams/filesystem.json
-   npx mcp-mux upstream add-mock jira examples/mock-upstreams/jira.json
-   npx mcp-mux upstream add-mock github examples/mock-upstreams/github.json
+   npx mcp-mux upstream add-mock jira      examples/mock-upstreams/jira.json
+   npx mcp-mux upstream add-mock github    examples/mock-upstreams/github.json
    ```
 
-3. Connect Inspector as a stdio MCP server:
+3. Connect Inspector as a stdio MCP client:
 
    ```bash
    npx mcp-mux client --session inspector
    ```
 
-4. Connect a second host (for example Codex):
+4. Connect a second client (for example Codex):
 
    ```bash
    npx mcp-mux client --session codex
    ```
 
-5. Open the Web UI at `http://127.0.0.1:8787` to observe both sessions, upstreams, tools, and traces.
+5. Open the Web UI at `http://127.0.0.1:8787` to observe sessions, upstreams,
+   tools, and traces.
 
-## Non-goals
+## Trust boundary
 
-This project is not yet Safe MCP Proxy and does not include policy worlds, allow/deny/ask/absent/simulate decisions, provenance, approvals, or hard isolation.
+The gateway coordinates. Docker isolates. OS enforces.
 
-## Trust Boundary
+This project prevents accidental conflicts inside one gateway instance. It does
+not sandbox upstream processes from each other or from the host OS.
 
-This project provides coordination, not hard sandboxing.
+See [docs/trust-boundary.md](docs/trust-boundary.md) for details.
 
-Gateway coordinates. Docker isolates. OS enforces.
+## MVP scope
 
-## Future
+This project is the coordination substrate. It is **not** yet:
 
-- profiles/worlds
-- governed tool projection
-- allow/deny/ask/absent/simulate
-- audit
-- Safe MCP Proxy layer
+- Safe MCP Proxy (projection, governed capability visibility)
+- Agent Hypervisor (world virtualization, agent lifecycle)
+
+Not in scope for this project:
+- hard process sandboxing
+- cryptographic client identity
+- distributed coordination
+- policy/approval engine (scaffolded but not the design target here)
