@@ -4,6 +4,7 @@ export interface SessionSummary {
   connected_at: string;
   last_seen_at: string;
   profile?: string;
+  policy?: string;
 }
 
 export class SessionManager {
@@ -42,6 +43,15 @@ export class SessionManager {
       return false;
     }
     session.profile = profileId;
+    return true;
+  }
+
+  setPolicy(sessionId: string, policyId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return false;
+    }
+    session.policy = policyId;
     return true;
   }
 

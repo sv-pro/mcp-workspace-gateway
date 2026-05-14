@@ -71,6 +71,20 @@
         </div>
         <ul id="sessions"></ul>
       </section>
+      <section id="policies-panel" class="actionable" role="button" tabindex="0" aria-controls="policies-manager" aria-expanded="false">
+        <div class="panel-title">
+          <h2>Policies</h2>
+          <span class="hint">Manage</span>
+        </div>
+        <ul id="policies-summary"></ul>
+      </section>
+      <section id="approvals-panel" class="actionable" role="button" tabindex="0" aria-controls="approvals-manager" aria-expanded="false">
+        <div class="panel-title">
+          <h2>Approvals</h2>
+          <span class="hint" id="approvals-hint">Pending: 0</span>
+        </div>
+        <ul id="approvals-summary"></ul>
+      </section>
       <section>
         <h2>Tools</h2>
         <ul id="tools"></ul>
@@ -111,6 +125,71 @@
           </div>
         </form>
       </div>
+    </section>
+
+    <section id="policies-manager" class="manager hidden" aria-live="polite">
+      <div class="manager-header">
+        <div>
+          <h2>Policies</h2>
+          <div class="hint">Policies govern what happens when a tool is called (allow, deny, absent, simulate, ask).</div>
+        </div>
+        <button id="close-policies-manager" class="secondary" type="button">Close</button>
+      </div>
+      <div id="policy-message"></div>
+      <div class="manager-grid">
+        <div>
+          <h3>Defined Policies</h3>
+          <div id="policy-list" class="upstream-cards"></div>
+          <h3 style="margin-top:16px">Assign Policy to Session</h3>
+          <div class="form-stack">
+            <div class="field">
+              <label for="policy-assign-session">Session</label>
+              <select id="policy-assign-session"></select>
+            </div>
+            <div class="field">
+              <label for="policy-assign-id">Policy</label>
+              <select id="policy-assign-id"></select>
+            </div>
+            <div class="actions">
+              <button id="policy-assign-btn" class="primary" type="button">Assign</button>
+            </div>
+          </div>
+        </div>
+        <form id="policy-form" class="form-stack">
+          <h3>Create Policy</h3>
+          <div class="field">
+            <label for="policy-id">ID</label>
+            <input id="policy-id" name="id" autocomplete="off" required />
+          </div>
+          <div class="field">
+            <label for="policy-default-decision">Default decision</label>
+            <select id="policy-default-decision">
+              <option value="allow">allow</option>
+              <option value="deny">deny</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Rules <span class="hint">(first match wins)</span></label>
+            <div id="policy-rules-list" class="form-stack"></div>
+            <button id="add-rule-btn" class="secondary" type="button" style="margin-top:8px">+ Add Rule</button>
+          </div>
+          <div class="actions">
+            <button class="primary" type="submit">Create Policy</button>
+            <button id="cancel-policy" class="secondary" type="button">Clear</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="approvals-manager" class="manager hidden" aria-live="polite">
+      <div class="manager-header">
+        <div>
+          <h2>Pending Approvals</h2>
+          <div class="hint">Tool calls held waiting for your allow or deny decision.</div>
+        </div>
+        <button id="close-approvals-manager" class="secondary" type="button">Close</button>
+      </div>
+      <div id="approval-list" class="upstream-cards"></div>
     </section>
 
     <section id="upstream-manager" class="manager hidden" aria-live="polite">
@@ -202,9 +281,13 @@
       let currentStatus = { upstreams: [], sessions: [], tools: [], traces: [] };
       let managerOpen = false;
       let profilesManagerOpen = false;
+      let policiesManagerOpen = false;
+      let approvalsManagerOpen = false;
       let editingUpstreamId = null;
       let upstreamTemplates = [];
       let allProfiles = [];
+      let allPolicies = [];
+      let allApprovals = [];
       const upstreamDebugOutputs = new Map();
       const upstreamDebugScrollTops = new Map();
       let managerRenderSignature = '';
@@ -583,19 +666,31 @@
       }
 
       async function refresh() {
-        const response = await fetch('/api/status');
-        currentStatus = await response.json();
+        const [statusRes, approvalsRes] = await Promise.all([
+          fetch('/api/status'),
+          fetch('/api/approvals'),
+        ]);
+        currentStatus = await statusRes.json();
+        allApprovals = await approvalsRes.json();
 
         el('gateway-status').textContent = `Gateway: ${currentStatus.running ? 'running' : 'stopped'}`;
         list('upstreams', currentStatus.upstreams.map((u) => `${u.id} (${u.type}, tools: ${u.tool_count})`));
-        list('sessions', currentStatus.sessions.map((s) => `${s.session_id}: ${s.status}${s.profile ? ` [${s.profile}]` : ''}`));
+        list('sessions', currentStatus.sessions.map((s) => {
+          const tags = [s.profile && `profile:${s.profile}`, s.policy && `policy:${s.policy}`].filter(Boolean);
+          return `${s.session_id}: ${s.status}${tags.length ? ` [${tags.join(', ')}]` : ''}`;
+        }));
         list('tools', currentStatus.tools.map((t) => t.exposed_name));
         list(
           'traces',
           currentStatus.traces.slice(0, 20).map((t) => `${t.method} from ${t.session_id} -> ${t.status}${t.exposed_tool_name ? ` (${t.exposed_tool_name})` : ''}`),
         );
+        list('policies-summary', allPolicies.length ? allPolicies.map((p) => `${p.id} (${p.rules.length} rules, default: ${p.default_decision})`) : []);
+        el('approvals-hint').textContent = `Pending: ${allApprovals.length}`;
+        list('approvals-summary', allApprovals.map((a) => `${a.exposed_name} — session: ${a.session_id}`));
         renderManager();
         renderProfilesManager();
+        renderPoliciesManager();
+        renderApprovalsManager();
       }
 
       async function saveUpstream(event) {
@@ -923,6 +1018,309 @@
         }
       }
 
+      const loadPolicies = async () => {
+        const response = await fetch('/api/policies');
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        allPolicies = await response.json();
+      };
+
+      const showPolicyMessage = (message, type = 'info') => {
+        const node = el('policy-message');
+        node.innerHTML = '';
+        if (!message) {
+          return;
+        }
+        const notice = document.createElement('div');
+        notice.className = `notice ${type}`;
+        notice.textContent = message;
+        node.appendChild(notice);
+      };
+
+      const renderPoliciesManager = () => {
+        const manager = el('policies-manager');
+        const panel = el('policies-panel');
+        manager.classList.toggle('hidden', !policiesManagerOpen);
+        panel.setAttribute('aria-expanded', String(policiesManagerOpen));
+        if (!policiesManagerOpen) {
+          return;
+        }
+
+        const listNode = el('policy-list');
+        listNode.innerHTML = '';
+        if (!allPolicies.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'No policies defined.';
+          listNode.appendChild(empty);
+        }
+        for (const policy of allPolicies) {
+          const card = document.createElement('article');
+          card.className = 'upstream-card';
+
+          const header = document.createElement('header');
+          const title = document.createElement('h3');
+          title.textContent = policy.id;
+          const badge = document.createElement('code');
+          badge.textContent = `default: ${policy.default_decision}`;
+          header.append(title, badge);
+
+          const meta = document.createElement('div');
+          meta.className = 'upstream-meta';
+          if (policy.rules.length) {
+            meta.textContent = policy.rules.map((r) => `${r.pattern} → ${r.decision}`).join(', ');
+          } else {
+            meta.textContent = '(no rules — default applies to all)';
+          }
+
+          const actions = document.createElement('div');
+          actions.className = 'actions';
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'danger';
+          removeBtn.type = 'button';
+          removeBtn.textContent = 'Delete';
+          removeBtn.addEventListener('click', async () => {
+            if (!window.confirm(`Delete policy '${policy.id}'?`)) {
+              return;
+            }
+            try {
+              const res = await fetch(`/api/policies/${encodeURIComponent(policy.id)}`, { method: 'DELETE' });
+              if (!res.ok) {
+                throw new Error(await res.text());
+              }
+              await loadPolicies();
+              renderPoliciesManager();
+            } catch (error) {
+              showPolicyMessage(`Unable to delete policy: ${error.message}`, 'error');
+            }
+          });
+          actions.appendChild(removeBtn);
+          card.append(header, meta, actions);
+          listNode.appendChild(card);
+        }
+
+        const sessionSelect = el('policy-assign-session');
+        const currentSession = sessionSelect.value;
+        sessionSelect.innerHTML = '';
+        const noSessionOption = document.createElement('option');
+        noSessionOption.value = '';
+        noSessionOption.textContent = '(select session)';
+        sessionSelect.appendChild(noSessionOption);
+        for (const session of currentStatus.sessions) {
+          const option = document.createElement('option');
+          option.value = session.session_id;
+          option.textContent = `${session.session_id}${session.policy ? ` [${session.policy}]` : ''}`;
+          sessionSelect.appendChild(option);
+        }
+        if (currentStatus.sessions.some((s) => s.session_id === currentSession)) {
+          sessionSelect.value = currentSession;
+        }
+
+        const policySelect = el('policy-assign-id');
+        const currentPolicy = policySelect.value;
+        policySelect.innerHTML = '';
+        const noPolicyOption = document.createElement('option');
+        noPolicyOption.value = '';
+        noPolicyOption.textContent = '(select policy)';
+        policySelect.appendChild(noPolicyOption);
+        for (const policy of allPolicies) {
+          const option = document.createElement('option');
+          option.value = policy.id;
+          option.textContent = policy.id;
+          policySelect.appendChild(option);
+        }
+        if (allPolicies.some((p) => p.id === currentPolicy)) {
+          policySelect.value = currentPolicy;
+        }
+      };
+
+      const addRuleRow = () => {
+        const container = el('policy-rules-list');
+        const row = document.createElement('div');
+        row.className = 'form-stack';
+        row.style.border = '1px solid #e2e8f0';
+        row.style.borderRadius = '6px';
+        row.style.padding = '8px';
+
+        const patternField = document.createElement('div');
+        patternField.className = 'field';
+        const patternLabel = document.createElement('label');
+        patternLabel.textContent = 'Pattern (glob)';
+        const patternInput = document.createElement('input');
+        patternInput.name = 'rule-pattern';
+        patternInput.placeholder = 'e.g. github_* or filesystem_write_file';
+        patternInput.autocomplete = 'off';
+        patternField.append(patternLabel, patternInput);
+
+        const decisionField = document.createElement('div');
+        decisionField.className = 'field';
+        const decisionLabel = document.createElement('label');
+        decisionLabel.textContent = 'Decision';
+        const decisionSelect = document.createElement('select');
+        decisionSelect.name = 'rule-decision';
+        for (const decision of ['allow', 'deny', 'absent', 'simulate', 'ask']) {
+          const option = document.createElement('option');
+          option.value = decision;
+          option.textContent = decision;
+          decisionSelect.appendChild(option);
+        }
+        decisionField.append(decisionLabel, decisionSelect);
+
+        const mockField = document.createElement('div');
+        mockField.className = 'field hidden';
+        mockField.dataset.role = 'mock-field';
+        const mockLabel = document.createElement('label');
+        mockLabel.textContent = 'Mock result (JSON)';
+        const mockInput = document.createElement('input');
+        mockInput.name = 'rule-mock';
+        mockInput.placeholder = '{"content":[{"type":"text","text":"ok"}]}';
+        mockInput.autocomplete = 'off';
+        mockField.append(mockLabel, mockInput);
+
+        decisionSelect.addEventListener('change', () => {
+          mockField.classList.toggle('hidden', decisionSelect.value !== 'simulate');
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'danger';
+        removeBtn.textContent = 'Remove rule';
+        removeBtn.addEventListener('click', () => {
+          row.remove();
+        });
+
+        row.append(patternField, decisionField, mockField, removeBtn);
+        container.appendChild(row);
+      };
+
+      async function savePolicy(event) {
+        event.preventDefault();
+        const id = el('policy-id').value.trim();
+        if (!id) {
+          showPolicyMessage('ID is required.', 'error');
+          return;
+        }
+        const default_decision = el('policy-default-decision').value;
+        const ruleRows = el('policy-rules-list').children;
+        const rules = [];
+        for (const row of ruleRows) {
+          const pattern = row.querySelector('[name=rule-pattern]').value.trim();
+          const decision = row.querySelector('[name=rule-decision]').value;
+          const mockRaw = row.querySelector('[name=rule-mock]').value.trim();
+          if (!pattern) {
+            showPolicyMessage('Each rule must have a pattern.', 'error');
+            return;
+          }
+          const rule = { pattern, decision };
+          if (decision === 'simulate' && mockRaw) {
+            try {
+              rule.mock_result = JSON.parse(mockRaw);
+            } catch {
+              showPolicyMessage(`Mock result for pattern '${pattern}' is not valid JSON.`, 'error');
+              return;
+            }
+          }
+          rules.push(rule);
+        }
+        try {
+          const res = await fetch('/api/policies', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id, rules, default_decision }),
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => null);
+            throw new Error(body?.error ?? await res.text());
+          }
+          el('policy-form').reset();
+          el('policy-rules-list').innerHTML = '';
+          await loadPolicies();
+          renderPoliciesManager();
+          showPolicyMessage(`Policy '${id}' created.`, 'success');
+        } catch (error) {
+          showPolicyMessage(`Unable to create policy: ${error.message}`, 'error');
+        }
+      }
+
+      const renderApprovalsManager = () => {
+        const manager = el('approvals-manager');
+        const panel = el('approvals-panel');
+        manager.classList.toggle('hidden', !approvalsManagerOpen);
+        panel.setAttribute('aria-expanded', String(approvalsManagerOpen));
+        if (!approvalsManagerOpen) {
+          return;
+        }
+
+        const listNode = el('approval-list');
+        listNode.innerHTML = '';
+        if (!allApprovals.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'No pending approvals.';
+          listNode.appendChild(empty);
+          return;
+        }
+        for (const approval of allApprovals) {
+          const card = document.createElement('article');
+          card.className = 'upstream-card';
+
+          const header = document.createElement('header');
+          const title = document.createElement('h3');
+          title.textContent = approval.exposed_name;
+          const badge = document.createElement('code');
+          badge.textContent = approval.session_id;
+          header.append(title, badge);
+
+          const meta = document.createElement('div');
+          meta.className = 'upstream-meta';
+          const age = Math.round((Date.now() - new Date(approval.created_at).getTime()) / 1000);
+          meta.textContent = `Waiting ${age}s`;
+
+          const argsDetails = document.createElement('details');
+          const argsSummary = document.createElement('summary');
+          argsSummary.textContent = 'Arguments';
+          const argsPre = document.createElement('pre');
+          argsPre.className = 'debug-output';
+          argsPre.style.marginTop = '8px';
+          argsPre.textContent = JSON.stringify(approval.args, null, 2);
+          argsDetails.append(argsSummary, argsPre);
+
+          const actions = document.createElement('div');
+          actions.className = 'actions';
+
+          const allowBtn = document.createElement('button');
+          allowBtn.className = 'primary';
+          allowBtn.type = 'button';
+          allowBtn.textContent = 'Allow';
+          allowBtn.addEventListener('click', async () => {
+            try {
+              await fetch(`/api/approvals/${encodeURIComponent(approval.id)}/allow`, { method: 'POST' });
+              await refresh();
+            } catch (error) {
+              console.error('Allow failed:', error);
+            }
+          });
+
+          const denyBtn = document.createElement('button');
+          denyBtn.className = 'danger';
+          denyBtn.type = 'button';
+          denyBtn.textContent = 'Deny';
+          denyBtn.addEventListener('click', async () => {
+            try {
+              await fetch(`/api/approvals/${encodeURIComponent(approval.id)}/deny`, { method: 'POST' });
+              await refresh();
+            } catch (error) {
+              console.error('Deny failed:', error);
+            }
+          });
+
+          actions.append(allowBtn, denyBtn);
+          card.append(header, meta, argsDetails, actions);
+          listNode.appendChild(card);
+        }
+      };
+
       el('sessions-panel').addEventListener('click', async () => {
         profilesManagerOpen = !profilesManagerOpen;
         if (profilesManagerOpen) {
@@ -939,6 +1337,71 @@
       el('cancel-profile').addEventListener('click', () => {
         el('profile-form').reset();
         showProfileMessage('');
+      });
+
+      el('policies-panel').addEventListener('click', async () => {
+        policiesManagerOpen = !policiesManagerOpen;
+        if (policiesManagerOpen) {
+          await loadPolicies();
+        }
+        renderPoliciesManager();
+      });
+      el('policies-panel').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          el('policies-panel').click();
+        }
+      });
+      el('close-policies-manager').addEventListener('click', () => {
+        policiesManagerOpen = false;
+        showPolicyMessage('');
+        renderPoliciesManager();
+      });
+      el('policy-form').addEventListener('submit', savePolicy);
+      el('cancel-policy').addEventListener('click', () => {
+        el('policy-form').reset();
+        el('policy-rules-list').innerHTML = '';
+        showPolicyMessage('');
+      });
+      el('add-rule-btn').addEventListener('click', addRuleRow);
+      el('policy-assign-btn').addEventListener('click', async () => {
+        const sessionId = el('policy-assign-session').value;
+        const policyId = el('policy-assign-id').value;
+        if (!sessionId || !policyId) {
+          showPolicyMessage('Select a session and a policy.', 'error');
+          return;
+        }
+        try {
+          const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/policy`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ policyId }),
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => null);
+            throw new Error(body?.error ?? await res.text());
+          }
+          await refresh();
+          showPolicyMessage(`Policy '${policyId}' assigned to session '${sessionId}'.`, 'success');
+        } catch (error) {
+          showPolicyMessage(`Unable to assign policy: ${error.message}`, 'error');
+        }
+      });
+
+      el('approvals-panel').addEventListener('click', () => {
+        approvalsManagerOpen = !approvalsManagerOpen;
+        el('approvals-panel').setAttribute('aria-expanded', String(approvalsManagerOpen));
+        renderApprovalsManager();
+      });
+      el('approvals-panel').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          el('approvals-panel').click();
+        }
+      });
+      el('close-approvals-manager').addEventListener('click', () => {
+        approvalsManagerOpen = false;
+        renderApprovalsManager();
       });
 
       el('upstreams-panel').addEventListener('click', openManager);
@@ -986,7 +1449,7 @@
       applyTypeVisibility();
       updateGeneratedJson();
 
-      Promise.all([loadTemplates(), loadProfiles(), refresh()]).catch((error) => {
+      Promise.all([loadTemplates(), loadProfiles(), loadPolicies(), refresh()]).catch((error) => {
         el('gateway-status').textContent = `Gateway: error (${error.message})`;
       });
       setInterval(() => refresh().catch(() => {}), 2000);

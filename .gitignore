@@ -5,3 +5,5 @@ npm-debug.log*
 .mcp-mux*.log
 .mcp-mux-upstreams.json
 .mcp-mux-templates.json
+.mcp-mux-profiles.json
+.mcp-mux-policies.json

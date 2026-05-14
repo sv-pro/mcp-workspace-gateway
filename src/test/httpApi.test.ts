@@ -291,6 +291,105 @@ test('http api adds http upstream config and returns it for editing', async () =
   });
 });
 
+test('http api policy CRUD: create, get, list, delete', async () => {
+  await withApi(async (baseUrl) => {
+    const listEmpty = await fetch(`${baseUrl}/api/policies`);
+    assert.equal(listEmpty.status, 200);
+    assert.deepEqual(await listEmpty.json(), []);
+
+    const create = await fetch(`${baseUrl}/api/policies`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: 'strict',
+        rules: [{ pattern: 'github_*', decision: 'deny' }],
+        default_decision: 'allow',
+      }),
+    });
+    assert.equal(create.status, 201);
+    const policy = await create.json() as { id: string };
+    assert.equal(policy.id, 'strict');
+
+    const get = await fetch(`${baseUrl}/api/policies/strict`);
+    assert.equal(get.status, 200);
+    assert.equal((await get.json() as { id: string }).id, 'strict');
+
+    const list = await fetch(`${baseUrl}/api/policies`);
+    assert.equal((await list.json() as unknown[]).length, 1);
+
+    const del = await fetch(`${baseUrl}/api/policies/strict`, { method: 'DELETE' });
+    assert.equal(del.status, 200);
+
+    const listAfter = await fetch(`${baseUrl}/api/policies`);
+    assert.deepEqual(await listAfter.json(), []);
+  });
+});
+
+test('http api policy: 400 on invalid body', async () => {
+  await withApi(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/policies`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'p' }),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
+test('http api policy: 404 on get/delete unknown policy', async () => {
+  await withApi(async (baseUrl) => {
+    const get = await fetch(`${baseUrl}/api/policies/no-such`);
+    assert.equal(get.status, 404);
+    const del = await fetch(`${baseUrl}/api/policies/no-such`, { method: 'DELETE' });
+    assert.equal(del.status, 404);
+  });
+});
+
+test('http api assign policy to session', async () => {
+  await withApi(async (baseUrl) => {
+    await fetch(`${baseUrl}/api/policies`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'p1', rules: [], default_decision: 'allow' }),
+    });
+
+    await fetch(`${baseUrl}/api/sessions/s1/connect`, { method: 'POST' });
+
+    const assign = await fetch(`${baseUrl}/api/sessions/s1/policy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ policyId: 'p1' }),
+    });
+    assert.equal(assign.status, 200);
+    assert.deepEqual(await assign.json(), { ok: true });
+  });
+});
+
+test('http api assign policy: 404 for unknown session', async () => {
+  await withApi(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/sessions/ghost/policy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ policyId: 'p1' }),
+    });
+    assert.equal(res.status, 404);
+  });
+});
+
+test('http api approvals: list empty, decide on unknown id returns 404', async () => {
+  await withApi(async (baseUrl) => {
+    const list = await fetch(`${baseUrl}/api/approvals`);
+    assert.equal(list.status, 200);
+    assert.deepEqual(await list.json(), []);
+
+    const allow = await fetch(`${baseUrl}/api/approvals/no-such-id/allow`, { method: 'POST' });
+    assert.equal(allow.status, 404);
+
+    const deny = await fetch(`${baseUrl}/api/approvals/no-such-id/deny`, { method: 'POST' });
+    assert.equal(deny.status, 404);
+  });
+});
+
 test('http api returns 400 when adding an http upstream without id or url', async () => {
   await withApi(async (baseUrl) => {
     const noId = await fetch(`${baseUrl}/api/upstreams/http`, {
