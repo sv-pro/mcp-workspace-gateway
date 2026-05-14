@@ -15,6 +15,7 @@ export interface GatewayServerOptions {
   templatesFile?: string | null;
   profilesFile?: string | null;
   policiesFile?: string | null;
+  tracesFile?: string | null;
 }
 
 export class GatewayServer {
@@ -24,7 +25,7 @@ export class GatewayServer {
   readonly profiles: ProfileRegistry;
   readonly policies: PolicyRegistry;
   readonly approvals = new ApprovalQueue();
-  readonly traces = new TraceStore();
+  readonly traces: TraceStore;
   readonly tools: ToolRegistry;
   private readonly router: Router;
 
@@ -46,6 +47,12 @@ export class GatewayServer {
         ? path.resolve(process.cwd(), '.mcp-mux-policies.json')
         : options.policiesFile;
 
+    const tracesFile =
+      options.tracesFile === undefined
+        ? path.resolve(process.cwd(), '.mcp-mux-traces.jsonl')
+        : options.tracesFile;
+
+    this.traces = new TraceStore(500, tracesFile);
     this.upstreams = new UpstreamRegistry({ persistenceFile: upstreamsFile });
     this.templates = new UpstreamTemplateRegistry({ persistenceFile: templatesFile });
     this.profiles = new ProfileRegistry({ persistenceFile: profilesFile });

@@ -682,7 +682,12 @@
         list('tools', currentStatus.tools.map((t) => t.exposed_name));
         list(
           'traces',
-          currentStatus.traces.slice(0, 20).map((t) => `${t.method} from ${t.session_id} -> ${t.status}${t.exposed_tool_name ? ` (${t.exposed_tool_name})` : ''}`),
+          currentStatus.traces.slice(0, 20).map((t) => {
+            let s = `${t.method} from ${t.session_id} -> ${t.status}`;
+            if (t.exposed_tool_name) s += ` (${t.exposed_tool_name})`;
+            if (t.policy_decision) s += ` [${t.policy_decision}${t.policy_rule_pattern ? ` on "${t.policy_rule_pattern}"` : ''}]`;
+            return s;
+          }),
         );
         list('policies-summary', allPolicies.length ? allPolicies.map((p) => `${p.id} (${p.rules.length} rules, default: ${p.default_decision})`) : []);
         el('approvals-hint').textContent = `Pending: ${allApprovals.length}`;

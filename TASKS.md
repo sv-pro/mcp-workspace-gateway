@@ -11,17 +11,13 @@
 
 ## In progress
 
-### 1. Governance-aware trace log
+### 1. Governance-aware trace log ✓
 
-TraceEvent currently captures method, session, tool, and status — but nothing about governance. You can't tell from the trace that a call was denied, simulated, or held for approval. TraceStore is also in-memory (capped at 500 events); restarting the gateway clears the entire audit trail.
-
-**What to build:**
-
-- [ ] Add `policy_id: string | null`, `policy_decision: PolicyDecision | null`, `policy_rule_pattern: string | null` to `TraceEvent` in `src/protocol/types.ts`.
-- [ ] Capture governance decision in `Router` (`src/server/router.ts`) and include it in the trace event for every `tools/call`.
-- [ ] Persist traces to `.mcp-mux-traces.jsonl` (append-only JSONL; load last N entries on startup) in `src/server/traceStore.ts`.
-- [ ] Update web UI trace panel to show `policy_decision` inline when present.
-- [ ] Extend `router.test.ts` to assert governance decisions appear in traces; add `traceStore.test.ts`.
+- [x] Add `policy_id: string | null`, `policy_decision: PolicyDecision | null`, `policy_rule_pattern: string | null` to `TraceEvent` in `src/protocol/types.ts`.
+- [x] Capture governance decision in `Router` (`src/server/router.ts`) and include it in the trace event for every `tools/call`.
+- [x] Persist traces to `.mcp-mux-traces.jsonl` (append-only JSONL; load last N entries on startup) in `src/server/traceStore.ts`.
+- [x] Update web UI trace panel to show `policy_decision` inline when present.
+- [x] Extend `router.test.ts` to assert governance decisions appear in traces; add `traceStore.test.ts`.
 
 ### 2. Session persistence
 
