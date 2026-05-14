@@ -44,6 +44,45 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
         return writeJson(res, 200, await gateway.upstreams.listSummaries());
       }
 
+      if (method === 'GET' && pathname === '/api/upstream-templates') {
+        return writeJson(res, 200, gateway.templates.list());
+      }
+
+      if (method === 'POST' && pathname === '/api/upstream-templates') {
+        const body = await readJson<{
+          id?: string;
+          label?: string;
+          definition?: {
+            id?: string;
+            name?: string;
+            executable?: string;
+            args?: string[];
+            cwd?: string;
+            env?: Record<string, string>;
+          };
+        }>(req);
+        if (!body.id || !body.label || !body.definition?.id || !body.definition.executable) {
+          return writeJson(res, 400, { error: 'id, label, definition.id, and definition.executable are required' });
+        }
+
+        return writeJson(
+          res,
+          200,
+          gateway.templates.upsert({
+            id: body.id,
+            label: body.label,
+            definition: {
+              id: body.definition.id,
+              name: body.definition.name,
+              executable: body.definition.executable,
+              args: body.definition.args,
+              cwd: body.definition.cwd,
+              env: body.definition.env,
+            },
+          }),
+        );
+      }
+
       if (method === 'POST' && pathname === '/api/upstreams/mock') {
         const body = await readJson<{ id?: string; file?: string; mock_json?: string }>(req);
         if (!body.id || (!body.file && !body.mock_json)) {
@@ -84,6 +123,34 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
       }
 
       const upstreamPathParts = pathname.split('/');
+      const templatePathParts = pathname.split('/');
+      if (
+        method === 'GET' &&
+        templatePathParts[1] === 'api' &&
+        templatePathParts[2] === 'upstream-templates' &&
+        templatePathParts.length === 4
+      ) {
+        const templateId = decodeURIComponent(templatePathParts[3] ?? '');
+        const template = gateway.templates.get(templateId);
+        if (!template) {
+          return writeJson(res, 404, { error: `Template not found: ${templateId}` });
+        }
+        return writeJson(res, 200, template);
+      }
+
+      if (
+        method === 'DELETE' &&
+        templatePathParts[1] === 'api' &&
+        templatePathParts[2] === 'upstream-templates' &&
+        templatePathParts.length === 4
+      ) {
+        const templateId = decodeURIComponent(templatePathParts[3] ?? '');
+        if (!gateway.templates.remove(templateId)) {
+          return writeJson(res, 404, { error: `Template not found: ${templateId}` });
+        }
+        return writeJson(res, 200, { ok: true });
+      }
+
       if (
         method === 'GET' &&
         upstreamPathParts[1] === 'api' &&

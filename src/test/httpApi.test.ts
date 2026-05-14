@@ -6,7 +6,7 @@ import { GatewayServer } from '../server/gatewayServer';
 import { startHttpApi } from '../server/httpApi';
 
 async function withApi<T>(run: (baseUrl: string) => Promise<T>): Promise<T> {
-  const gateway = new GatewayServer({ upstreamsFile: null });
+  const gateway = new GatewayServer({ upstreamsFile: null, templatesFile: null });
   const server = await startHttpApi(gateway, { host: '127.0.0.1', port: 0 });
   const address = server.address() as AddressInfo;
   const baseUrl = `http://127.0.0.1:${address.port}`;
@@ -88,6 +88,42 @@ test('http api adds, replaces, and removes mock upstreams', async () => {
     const deleteResponse = await fetch(`${baseUrl}/api/upstreams/workspace`, { method: 'DELETE' });
     assert.equal(deleteResponse.status, 200);
     assert.deepEqual(await (await fetch(`${baseUrl}/api/upstreams`)).json(), []);
+  });
+});
+
+test('http api manages upstream templates', async () => {
+  await withApi(async (baseUrl) => {
+    const listResponse = await fetch(`${baseUrl}/api/upstream-templates`);
+    assert.equal(listResponse.status, 200);
+    const initialTemplates = (await listResponse.json()) as Array<{ id: string }>;
+    assert.deepEqual(
+      initialTemplates.map((template) => template.id).sort(),
+      ['filesystem', 'github', 'memory'],
+    );
+
+    const saveResponse = await fetch(`${baseUrl}/api/upstream-templates`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: 'custom',
+        label: 'Custom',
+        definition: {
+          id: 'custom-upstream',
+          name: 'Custom Upstream',
+          executable: 'node',
+          args: ['server.js'],
+        },
+      }),
+    });
+    assert.equal(saveResponse.status, 200);
+
+    const getResponse = await fetch(`${baseUrl}/api/upstream-templates/custom`);
+    assert.equal(getResponse.status, 200);
+    assert.equal(((await getResponse.json()) as { definition: { executable: string } }).definition.executable, 'node');
+
+    const deleteResponse = await fetch(`${baseUrl}/api/upstream-templates/custom`, { method: 'DELETE' });
+    assert.equal(deleteResponse.status, 200);
+    assert.deepEqual(await deleteResponse.json(), { ok: true });
   });
 });
 

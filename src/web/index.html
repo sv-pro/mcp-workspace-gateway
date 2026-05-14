@@ -99,10 +99,11 @@
             <label for="upstream-template">Template</label>
             <select id="upstream-template" name="template">
               <option value="">Custom upstream</option>
-              <option value="filesystem">Filesystem</option>
-              <option value="memory">Memory</option>
-              <option value="github">GitHub</option>
             </select>
+          </div>
+          <div class="actions">
+            <button id="save-template" class="secondary" type="button">Save Template</button>
+            <button id="delete-template" class="danger" type="button">Delete Template</button>
           </div>
           <div class="field">
             <label for="upstream-id">ID</label>
@@ -145,38 +146,10 @@
       let currentStatus = { upstreams: [], sessions: [], tools: [], traces: [] };
       let managerOpen = false;
       let editingUpstreamId = null;
+      let upstreamTemplates = [];
       const upstreamDebugOutputs = new Map();
       const upstreamDebugScrollTops = new Map();
       let managerRenderSignature = '';
-
-      const upstreamTemplates = {
-        filesystem: {
-          id: 'filesystem',
-          name: 'Filesystem',
-          executable: 'npx',
-          args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
-          cwd: '',
-          env: {},
-        },
-        memory: {
-          id: 'memory',
-          name: 'Memory',
-          executable: 'npx',
-          args: ['-y', '@modelcontextprotocol/server-memory'],
-          cwd: '',
-          env: {},
-        },
-        github: {
-          id: 'github',
-          name: 'GitHub',
-          executable: 'npx',
-          args: ['-y', '@modelcontextprotocol/server-github'],
-          cwd: '',
-          env: {
-            GITHUB_PERSONAL_ACCESS_TOKEN: '',
-          },
-        },
-      };
 
       const list = (id, items) => {
         const node = el(id);
@@ -276,6 +249,38 @@
         } catch (error) {
           el('upstream-json').value = error.message;
         }
+      };
+
+      const templateIdFromDefinition = (definition) =>
+        (definition.id || 'upstream')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'upstream';
+
+      const renderTemplateOptions = () => {
+        const selected = el('upstream-template').value;
+        el('upstream-template').innerHTML = '';
+        const custom = document.createElement('option');
+        custom.value = '';
+        custom.textContent = 'Custom upstream';
+        el('upstream-template').appendChild(custom);
+        for (const template of upstreamTemplates) {
+          const option = document.createElement('option');
+          option.value = template.id;
+          option.textContent = template.label;
+          el('upstream-template').appendChild(option);
+        }
+        el('upstream-template').value = upstreamTemplates.some((template) => template.id === selected) ? selected : '';
+      };
+
+      const loadTemplates = async () => {
+        const response = await fetch('/api/upstream-templates');
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        upstreamTemplates = await response.json();
+        renderTemplateOptions();
       };
 
       const resetUpstreamForm = () => {
@@ -509,6 +514,71 @@
         }
       }
 
+      async function saveTemplate() {
+        let definition;
+        try {
+          definition = buildUpstreamDefinition();
+        } catch (error) {
+          showMessage(`Template config is invalid: ${error.message}`, 'error');
+          return;
+        }
+
+        if (!definition.id || !definition.executable) {
+          showMessage('Template requires ID and executable.', 'error');
+          return;
+        }
+
+        const selectedTemplate = upstreamTemplates.find((template) => template.id === el('upstream-template').value);
+        const templateId = selectedTemplate?.id ?? templateIdFromDefinition(definition);
+        const label = definition.name || definition.id;
+
+        try {
+          const response = await fetch('/api/upstream-templates', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              id: templateId,
+              label,
+              definition,
+            }),
+          });
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          await loadTemplates();
+          el('upstream-template').value = templateId;
+          showMessage(`Template '${label}' saved.`, 'success');
+        } catch (error) {
+          showMessage(`Unable to save template: ${error.message}`, 'error');
+        }
+      }
+
+      async function deleteTemplate() {
+        const templateId = el('upstream-template').value;
+        if (!templateId) {
+          showMessage('Select a template to delete.', 'error');
+          return;
+        }
+
+        const template = upstreamTemplates.find((candidate) => candidate.id === templateId);
+        if (!window.confirm(`Delete template '${template?.label ?? templateId}'?`)) {
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/upstream-templates/${encodeURIComponent(templateId)}`, { method: 'DELETE' });
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+          await loadTemplates();
+          el('upstream-template').value = '';
+          showMessage(`Template '${template?.label ?? templateId}' deleted.`, 'success');
+        } catch (error) {
+          showMessage(`Unable to delete template: ${error.message}`, 'error');
+        }
+      }
+
       const showDebugOutput = (id, node, payload) => {
         const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
         upstreamDebugOutputs.set(id, text);
@@ -593,7 +663,7 @@
       el('close-upstream-manager').addEventListener('click', closeManager);
       el('upstream-form').addEventListener('submit', saveUpstream);
       el('upstream-template').addEventListener('change', () => {
-        const template = upstreamTemplates[el('upstream-template').value];
+        const template = upstreamTemplates.find((candidate) => candidate.id === el('upstream-template').value);
         if (!template) {
           updateGeneratedJson();
           return;
@@ -603,8 +673,14 @@
         el('upstream-form-title').textContent = 'Add Upstream Server';
         el('save-upstream').textContent = 'Add Upstream';
         el('upstream-id').readOnly = false;
-        setFormValues(template);
+        setFormValues(template.definition);
         showMessage('');
+      });
+      el('save-template').addEventListener('click', () => {
+        void saveTemplate();
+      });
+      el('delete-template').addEventListener('click', () => {
+        void deleteTemplate();
       });
       for (const input of ['upstream-id', 'upstream-name', 'upstream-executable', 'upstream-args', 'upstream-cwd', 'upstream-env']) {
         el(input).addEventListener('input', updateGeneratedJson);
@@ -615,7 +691,7 @@
       });
       updateGeneratedJson();
 
-      refresh().catch((error) => {
+      Promise.all([loadTemplates(), refresh()]).catch((error) => {
         el('gateway-status').textContent = `Gateway: error (${error.message})`;
       });
       setInterval(() => refresh().catch(() => {}), 2000);
