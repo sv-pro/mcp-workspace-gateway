@@ -36,7 +36,7 @@ OS enforces.
 
 | Concern | Correct layer |
 |---------|--------------|
-| Preventing cross-session tool leakage | Gateway (profiles / bindings) |
+| Preventing cross-session tool leakage | Gateway (session bindings) |
 | Preventing a subprocess from reading outside its root | OS permissions / read-only mounts |
 | Preventing network exfiltration | OS firewall / network namespace |
 | Preventing credential sharing between sessions | Docker containers / separate users |

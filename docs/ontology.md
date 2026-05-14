@@ -22,7 +22,7 @@ World        — compiled executable environment [future]
 
 ---
 
-## 1. Prototype (Blueprint)
+## 1. Prototype
 
 A **Prototype** is a generic, reusable capability family. It describes a type of
 MCP server: what transport it uses, what configuration it expects, and what kind
