@@ -6,7 +6,7 @@ import { GatewayServer } from '../server/gatewayServer';
 import { startHttpApi } from '../server/httpApi';
 
 async function withApi<T>(run: (baseUrl: string) => Promise<T>): Promise<T> {
-  const gateway = new GatewayServer({ upstreamsFile: null, templatesFile: null });
+  const gateway = new GatewayServer({ upstreamsFile: null, templatesFile: null, profilesFile: null, policiesFile: null, tracesFile: null });
   const server = await startHttpApi(gateway, { host: '127.0.0.1', port: 0 });
   const address = server.address() as AddressInfo;
   const baseUrl = `http://127.0.0.1:${address.port}`;

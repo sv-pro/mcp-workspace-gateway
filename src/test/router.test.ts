@@ -220,3 +220,80 @@ test('router governance: no policy assigned means allow-all', async () => {
   assert.ok(toolNames.some((name) => name.startsWith('jira_')), 'jira tools visible');
   assert.ok(toolNames.some((name) => name.startsWith('github_')), 'github tools visible');
 });
+
+test('router governance: trace records policy_decision on deny', async () => {
+  const gateway = new GatewayServer({ upstreamsFile: null, profilesFile: null, policiesFile: null, tracesFile: null });
+  const repoRoot = path.resolve(__dirname, '../..');
+
+  await gateway.upstreams.addMock('jira', path.join(repoRoot, 'examples/mock-upstreams/jira.json'));
+  gateway.policies.upsert({ id: 'deny-pol', rules: [{ pattern: 'jira_*', decision: 'deny' }], default_decision: 'allow' });
+  gateway.connectSession('traced');
+  gateway.sessions.setPolicy('traced', 'deny-pol');
+
+  await gateway.handleRpc('traced', {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'jira_create_issue', arguments: {} },
+  });
+
+  const traces = gateway.traces.list();
+  const callTrace = traces.find((t) => t.method === 'tools/call');
+  assert.ok(callTrace, 'tools/call trace should exist');
+  assert.equal(callTrace!.policy_id, 'deny-pol');
+  assert.equal(callTrace!.policy_decision, 'deny');
+  assert.equal(callTrace!.policy_rule_pattern, 'jira_*');
+  assert.equal(callTrace!.status, 'error');
+});
+
+test('router governance: trace records policy_decision on simulate', async () => {
+  const gateway = new GatewayServer({ upstreamsFile: null, profilesFile: null, policiesFile: null, tracesFile: null });
+  const repoRoot = path.resolve(__dirname, '../..');
+
+  await gateway.upstreams.addMock('jira', path.join(repoRoot, 'examples/mock-upstreams/jira.json'));
+  gateway.policies.upsert({
+    id: 'sim-pol',
+    rules: [{ pattern: 'jira_search', decision: 'simulate', mock_result: { issues: [] } }],
+    default_decision: 'deny',
+  });
+  gateway.connectSession('traced2');
+  gateway.sessions.setPolicy('traced2', 'sim-pol');
+
+  const response = await gateway.handleRpc('traced2', {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'jira_search', arguments: {} },
+  });
+
+  assert.equal(response?.error, undefined);
+  const traces = gateway.traces.list();
+  const callTrace = traces.find((t) => t.method === 'tools/call');
+  assert.ok(callTrace, 'tools/call trace should exist');
+  assert.equal(callTrace!.policy_id, 'sim-pol');
+  assert.equal(callTrace!.policy_decision, 'simulate');
+  assert.equal(callTrace!.policy_rule_pattern, 'jira_search');
+  assert.equal(callTrace!.status, 'ok');
+});
+
+test('router governance: trace has null policy fields when no policy assigned', async () => {
+  const gateway = new GatewayServer({ upstreamsFile: null, profilesFile: null, policiesFile: null, tracesFile: null });
+  const repoRoot = path.resolve(__dirname, '../..');
+
+  await gateway.upstreams.addMock('jira', path.join(repoRoot, 'examples/mock-upstreams/jira.json'));
+  gateway.connectSession('unguarded');
+
+  await gateway.handleRpc('unguarded', {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'jira_create_issue', arguments: {} },
+  });
+
+  const traces = gateway.traces.list();
+  const callTrace = traces.find((t) => t.method === 'tools/call');
+  assert.ok(callTrace, 'tools/call trace should exist');
+  assert.equal(callTrace!.policy_id, null);
+  assert.equal(callTrace!.policy_decision, null);
+  assert.equal(callTrace!.policy_rule_pattern, null);
+});

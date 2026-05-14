@@ -38,6 +38,9 @@ export class Router {
       raw_tool_name: null,
       status: 'ok',
       error_code: null,
+      policy_id: null,
+      policy_decision: null,
+      policy_rule_pattern: null,
     };
 
     try {
@@ -94,7 +97,14 @@ export class Router {
             throw createError(JSON_RPC_ERRORS.internal, `Upstream missing: ${resolved.upstream_id}`);
           }
 
-          const { decision, mock_result } = this.resolveDecision(sessionId, resolved.exposed_name);
+          const { decision, mock_result, policy_id, policy_rule_pattern } = this.resolveDecision(sessionId, resolved.exposed_name);
+
+          trace = {
+            ...trace,
+            policy_id: policy_id ?? null,
+            policy_decision: policy_id ? decision : null,
+            policy_rule_pattern: policy_rule_pattern ?? null,
+          };
 
           if (decision === 'deny' || decision === 'absent') {
             throw createError(JSON_RPC_ERRORS.invalidParams, `Tool call denied by policy: ${params.name}`);
@@ -156,7 +166,7 @@ export class Router {
   private resolveDecision(
     sessionId: string,
     exposedName: string,
-  ): { decision: PolicyDecision; mock_result?: unknown } {
+  ): { decision: PolicyDecision; mock_result?: unknown; policy_id?: string; policy_rule_pattern?: string } {
     const session = this.sessions.list().find((s) => s.session_id === sessionId);
     if (!session?.policy) {
       return { decision: 'allow' };
@@ -167,10 +177,10 @@ export class Router {
     }
     for (const rule of policy.rules) {
       if (this.matchesPattern(rule.pattern, exposedName)) {
-        return { decision: rule.decision, mock_result: rule.mock_result };
+        return { decision: rule.decision, mock_result: rule.mock_result, policy_id: policy.id, policy_rule_pattern: rule.pattern };
       }
     }
-    return { decision: policy.default_decision };
+    return { decision: policy.default_decision, policy_id: policy.id };
   }
 
   private matchesPattern(pattern: string, name: string): boolean {

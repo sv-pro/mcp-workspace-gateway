@@ -110,4 +110,7 @@ export interface TraceEvent {
   raw_tool_name: string | null;
   status: 'ok' | 'error';
   error_code: string | null;
+  policy_id: string | null;
+  policy_decision: PolicyDecision | null;
+  policy_rule_pattern: string | null;
 }
