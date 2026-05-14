@@ -252,3 +252,59 @@ test('http api adds stdio upstream config and returns it for editing', async () 
     assert.equal(((await restartedDiagnosticsResponse.json()) as { status: string }).status, 'stopped');
   });
 });
+
+test('http api adds http upstream config and returns it for editing', async () => {
+  await withApi(async (baseUrl) => {
+    const addResponse = await fetch(`${baseUrl}/api/upstreams/http`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: 'remote',
+        name: 'Remote',
+        url: 'http://example.com/mcp',
+        headers: { Authorization: 'Bearer tok' },
+      }),
+    });
+    assert.equal(addResponse.status, 201);
+
+    const upstreams = (await (await fetch(`${baseUrl}/api/upstreams`)).json()) as Array<{
+      id: string;
+      type: string;
+      name: string;
+      tool_count: number;
+      url: string;
+    }>;
+    assert.deepEqual(upstreams, [{ id: 'remote', type: 'http', name: 'Remote', tool_count: 0, url: 'http://example.com/mcp' }]);
+
+    const configResponse = await fetch(`${baseUrl}/api/upstreams/remote/http`);
+    assert.equal(configResponse.status, 200);
+    assert.deepEqual(await configResponse.json(), {
+      id: 'remote',
+      name: 'Remote',
+      url: 'http://example.com/mcp',
+      headers: { Authorization: 'Bearer tok' },
+    });
+
+    const diagResponse = await fetch(`${baseUrl}/api/upstreams/remote/diagnostics`);
+    assert.equal(diagResponse.status, 200);
+    assert.equal(((await diagResponse.json()) as { status: string }).status, 'not-initialized');
+  });
+});
+
+test('http api returns 400 when adding an http upstream without id or url', async () => {
+  await withApi(async (baseUrl) => {
+    const noId = await fetch(`${baseUrl}/api/upstreams/http`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'http://example.com/mcp' }),
+    });
+    assert.equal(noId.status, 400);
+
+    const noUrl = await fetch(`${baseUrl}/api/upstreams/http`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'remote' }),
+    });
+    assert.equal(noUrl.status, 400);
+  });
+});

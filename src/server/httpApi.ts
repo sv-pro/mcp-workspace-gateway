@@ -122,6 +122,26 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
         return writeJson(res, 201, { ok: true });
       }
 
+      if (method === 'POST' && pathname === '/api/upstreams/http') {
+        const body = await readJson<{
+          id?: string;
+          name?: string;
+          url?: string;
+          headers?: Record<string, string>;
+        }>(req);
+        if (!body.id || !body.url) {
+          return writeJson(res, 400, { error: 'id and url are required' });
+        }
+
+        gateway.upstreams.addHttpDefinition({
+          id: body.id,
+          name: body.name,
+          url: body.url,
+          headers: body.headers,
+        });
+        return writeJson(res, 201, { ok: true });
+      }
+
       const upstreamPathParts = pathname.split('/');
       const templatePathParts = pathname.split('/');
       if (
@@ -245,6 +265,26 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
         const definition = gateway.upstreams.getStdioDefinition(upstreamId);
         if (!definition) {
           return writeJson(res, 404, { error: `Stdio upstream not found: ${upstreamId}` });
+        }
+
+        return writeJson(res, 200, definition);
+      }
+
+      if (
+        method === 'GET' &&
+        upstreamPathParts[1] === 'api' &&
+        upstreamPathParts[2] === 'upstreams' &&
+        upstreamPathParts.length === 5 &&
+        upstreamPathParts[4] === 'http'
+      ) {
+        const upstreamId = decodeURIComponent(upstreamPathParts[3] ?? '');
+        if (!upstreamId) {
+          return writeJson(res, 400, { error: 'id is required' });
+        }
+
+        const definition = gateway.upstreams.getHttpDefinition(upstreamId);
+        if (!definition) {
+          return writeJson(res, 404, { error: `HTTP upstream not found: ${upstreamId}` });
         }
 
         return writeJson(res, 200, definition);

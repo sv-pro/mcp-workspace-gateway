@@ -115,6 +115,33 @@ test('upstream registry supports inline mock definitions', async () => {
   });
 });
 
+test('upstream registry supports http definitions', () => {
+  const upstreams = new UpstreamRegistry();
+
+  upstreams.addHttpDefinition({
+    id: 'remote',
+    name: 'Remote',
+    url: 'http://example.com/mcp',
+    headers: { Authorization: 'Bearer tok' },
+  });
+
+  assert.deepEqual(upstreams.listSummaries(), [
+    {
+      id: 'remote',
+      type: 'http',
+      name: 'Remote',
+      tool_count: 0,
+      url: 'http://example.com/mcp',
+    },
+  ]);
+  assert.deepEqual(upstreams.getHttpDefinition('remote'), {
+    id: 'remote',
+    name: 'Remote',
+    url: 'http://example.com/mcp',
+    headers: { Authorization: 'Bearer tok' },
+  });
+});
+
 test('upstream registry supports stdio definitions', async () => {
   const upstreams = new UpstreamRegistry();
 
@@ -183,18 +210,25 @@ test('upstream registry persists and reloads upstream definitions', async () => 
     executable: process.execPath,
     args: ['-e', fakeMcpServerScript],
   });
+  first.addHttpDefinition({ id: 'http', name: 'Http', url: 'http://example.com/mcp' });
   first.closeAll();
 
   const second = new UpstreamRegistry({ persistenceFile });
   try {
     assert.deepEqual(
-      (await second.listSummaries()).map((summary) => ({
+      second.listSummaries().map((summary) => ({
         id: summary.id,
         type: summary.type,
         name: summary.name,
         tool_count: summary.tool_count,
       })),
       [
+        {
+          id: 'http',
+          type: 'http',
+          name: 'Http',
+          tool_count: 0,
+        },
         {
           id: 'mocked',
           type: 'mock',
@@ -216,7 +250,7 @@ test('upstream registry persists and reloads upstream definitions', async () => 
     };
     assert.deepEqual(
       persisted.upstreams.map((upstream) => upstream.id ?? upstream.definition?.id),
-      ['stdio'],
+      ['http', 'stdio'],
     );
   } finally {
     second.closeAll();

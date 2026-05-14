@@ -106,6 +106,13 @@
             <button id="delete-template" class="danger" type="button">Delete Template</button>
           </div>
           <div class="field">
+            <label for="upstream-type">Type</label>
+            <select id="upstream-type" name="type">
+              <option value="stdio">stdio (local process)</option>
+              <option value="http">http (remote server)</option>
+            </select>
+          </div>
+          <div class="field">
             <label for="upstream-id">ID</label>
             <input id="upstream-id" name="id" autocomplete="off" required />
           </div>
@@ -113,21 +120,33 @@
             <label for="upstream-name">Name</label>
             <input id="upstream-name" name="name" autocomplete="off" />
           </div>
-          <div class="field">
-            <label for="upstream-executable">Executable</label>
-            <input id="upstream-executable" name="executable" autocomplete="off" required />
+          <div id="stdio-fields">
+            <div class="field">
+              <label for="upstream-executable">Executable</label>
+              <input id="upstream-executable" name="executable" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="upstream-args">Args</label>
+              <input id="upstream-args" name="args" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="upstream-cwd">CWD</label>
+              <input id="upstream-cwd" name="cwd" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="upstream-env">Env</label>
+              <textarea id="upstream-env" name="env" spellcheck="false"></textarea>
+            </div>
           </div>
-          <div class="field">
-            <label for="upstream-args">Args</label>
-            <input id="upstream-args" name="args" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label for="upstream-cwd">CWD</label>
-            <input id="upstream-cwd" name="cwd" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label for="upstream-env">Env</label>
-            <textarea id="upstream-env" name="env" spellcheck="false"></textarea>
+          <div id="http-fields" class="hidden">
+            <div class="field">
+              <label for="upstream-url">URL</label>
+              <input id="upstream-url" name="url" type="url" autocomplete="off" placeholder="https://example.com/mcp" />
+            </div>
+            <div class="field">
+              <label for="upstream-headers">Headers</label>
+              <textarea id="upstream-headers" name="headers" spellcheck="false" placeholder="Authorization=Bearer token&#10;X-Api-Key=secret"></textarea>
+            </div>
           </div>
           <div class="field">
             <label for="upstream-json">Generated JSON</label>
@@ -215,6 +234,20 @@
       const buildUpstreamDefinition = () => {
         const id = el('upstream-id').value.trim();
         const name = el('upstream-name').value.trim();
+        const type = el('upstream-type').value;
+
+        if (type === 'http') {
+          const url = el('upstream-url').value.trim();
+          const headers = parseEnv(el('upstream-headers').value);
+          return {
+            id,
+            type: 'http',
+            ...(name ? { name } : {}),
+            url,
+            ...(headers ? { headers } : {}),
+          };
+        }
+
         const executable = el('upstream-executable').value.trim();
         const args = splitArgs(el('upstream-args').value.trim());
         const cwd = el('upstream-cwd').value.trim();
@@ -231,15 +264,31 @@
         };
       };
 
+      const applyTypeVisibility = () => {
+        const type = el('upstream-type').value;
+        el('stdio-fields').classList.toggle('hidden', type !== 'stdio');
+        el('http-fields').classList.toggle('hidden', type !== 'http');
+      };
+
       const setFormValues = (definition) => {
+        const type = definition.type === 'http' ? 'http' : 'stdio';
+        el('upstream-type').value = type;
+        applyTypeVisibility();
         el('upstream-id').value = definition.id ?? '';
         el('upstream-name').value = definition.name ?? '';
-        el('upstream-executable').value = definition.executable ?? '';
-        el('upstream-args').value = (definition.args ?? []).map(shellQuote).join(' ');
-        el('upstream-cwd').value = definition.cwd ?? '';
-        el('upstream-env').value = Object.entries(definition.env ?? {})
-          .map(([key, value]) => `${key}=${value}`)
-          .join('\n');
+        if (type === 'http') {
+          el('upstream-url').value = definition.url ?? '';
+          el('upstream-headers').value = Object.entries(definition.headers ?? {})
+            .map(([key, value]) => `${key}=${value}`)
+            .join('\n');
+        } else {
+          el('upstream-executable').value = definition.executable ?? '';
+          el('upstream-args').value = (definition.args ?? []).map(shellQuote).join(' ');
+          el('upstream-cwd').value = definition.cwd ?? '';
+          el('upstream-env').value = Object.entries(definition.env ?? {})
+            .map(([key, value]) => `${key}=${value}`)
+            .join('\n');
+        }
         updateGeneratedJson();
       };
 
@@ -290,6 +339,8 @@
         el('upstream-id').readOnly = false;
         el('upstream-template').value = '';
         el('upstream-form').reset();
+        el('upstream-type').value = 'stdio';
+        applyTypeVisibility();
         updateGeneratedJson();
       };
 
@@ -304,6 +355,7 @@
             executable: upstream.executable,
             args: upstream.args,
             cwd: upstream.cwd,
+            url: upstream.url,
           })),
         );
 
@@ -359,6 +411,8 @@
           file.className = 'upstream-file';
           if (upstream.type === 'stdio') {
             file.textContent = `Command: ${[upstream.executable, ...(upstream.args ?? [])].filter(Boolean).join(' ')}`;
+          } else if (upstream.type === 'http') {
+            file.textContent = `URL: ${upstream.url}`;
           } else {
             file.textContent = upstream.source_file ? `File: ${upstream.source_file}` : 'Source: inline JSON';
           }
@@ -381,9 +435,13 @@
           edit.className = 'secondary';
           edit.type = 'button';
           edit.textContent = 'Edit';
-          edit.disabled = upstream.type !== 'stdio';
+          edit.disabled = upstream.type !== 'stdio' && upstream.type !== 'http';
           edit.addEventListener('click', async () => {
-            await editStdioUpstream(upstream.id);
+            if (upstream.type === 'http') {
+              await editHttpUpstream(upstream.id);
+            } else {
+              await editStdioUpstream(upstream.id);
+            }
           });
 
           const diagnostics = document.createElement('button');
@@ -464,6 +522,27 @@
         }
       }
 
+      async function editHttpUpstream(id) {
+        showMessage('Loading upstream config...', 'info');
+        try {
+          const response = await fetch(`/api/upstreams/${encodeURIComponent(id)}/http`);
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const definition = await response.json();
+          editingUpstreamId = id;
+          el('upstream-form-title').textContent = `Edit ${id}`;
+          el('save-upstream').textContent = 'Update Upstream';
+          el('upstream-template').value = '';
+          setFormValues(definition);
+          el('upstream-id').readOnly = true;
+          showMessage('');
+        } catch (error) {
+          showMessage(`Unable to load upstream config: ${error.message}`, 'error');
+        }
+      }
+
       async function refresh() {
         const response = await fetch('/api/status');
         currentStatus = await response.json();
@@ -489,14 +568,23 @@
           return;
         }
 
-        if (!definition.id || !definition.executable) {
-          showMessage('ID and executable are required.', 'error');
+        if (!definition.id) {
+          showMessage('ID is required.', 'error');
+          return;
+        }
+        if (definition.type === 'http' && !definition.url) {
+          showMessage('URL is required for HTTP upstreams.', 'error');
+          return;
+        }
+        if (definition.type === 'stdio' && !definition.executable) {
+          showMessage('Executable is required for stdio upstreams.', 'error');
           return;
         }
 
+        const endpoint = definition.type === 'http' ? '/api/upstreams/http' : '/api/upstreams/stdio';
         showMessage('Saving upstream...', 'info');
         try {
-          const response = await fetch('/api/upstreams/stdio', {
+          const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(definition),
@@ -520,6 +608,11 @@
           definition = buildUpstreamDefinition();
         } catch (error) {
           showMessage(`Template config is invalid: ${error.message}`, 'error');
+          return;
+        }
+
+        if (definition.type === 'http') {
+          showMessage('Templates are only supported for stdio upstreams.', 'error');
           return;
         }
 
@@ -682,13 +775,20 @@
       el('delete-template').addEventListener('click', () => {
         void deleteTemplate();
       });
-      for (const input of ['upstream-id', 'upstream-name', 'upstream-executable', 'upstream-args', 'upstream-cwd', 'upstream-env']) {
+      el('upstream-type').addEventListener('change', () => {
+        applyTypeVisibility();
+        el('upstream-template').value = '';
+        updateGeneratedJson();
+      });
+
+      for (const input of ['upstream-id', 'upstream-name', 'upstream-executable', 'upstream-args', 'upstream-cwd', 'upstream-env', 'upstream-url', 'upstream-headers']) {
         el(input).addEventListener('input', updateGeneratedJson);
       }
       el('cancel-upstream-edit').addEventListener('click', () => {
         resetUpstreamForm();
         showMessage('');
       });
+      applyTypeVisibility();
       updateGeneratedJson();
 
       Promise.all([loadTemplates(), refresh()]).catch((error) => {

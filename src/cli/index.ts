@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 import { runClientCommand } from './commands/client';
 import { runServeCommand } from './commands/serve';
-import { runUpstreamAddMockCommand, runUpstreamListCommand } from './commands/upstream';
+import { runUpstreamAddHttpCommand, runUpstreamAddMockCommand, runUpstreamListCommand } from './commands/upstream';
 
 function usage(): string {
   return `Usage:
   mcp-mux serve
   mcp-mux client --session <name>
   mcp-mux upstream list
-  mcp-mux upstream add-mock <id> <file>`;
+  mcp-mux upstream add-mock <id> <file>
+  mcp-mux upstream add-http <id> <url>`;
 }
 
 function readFlag(args: string[], name: string): string | undefined {
@@ -49,6 +50,16 @@ async function main(): Promise<void> {
       throw new Error(`add-mock requires <id> <file>\n\n${usage()}`);
     }
     await runUpstreamAddMockCommand(id, file);
+    return;
+  }
+
+  if (command === 'upstream' && subcommand === 'add-http') {
+    const id = args[2];
+    const url = args[3];
+    if (!id || !url) {
+      throw new Error(`add-http requires <id> <url>\n\n${usage()}`);
+    }
+    await runUpstreamAddHttpCommand(id, url);
     return;
   }
 

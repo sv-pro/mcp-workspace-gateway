@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { HttpUpstreamAdapter } from '../adapters/upstream/httpUpstreamAdapter';
 import { MockUpstreamAdapter } from '../adapters/upstream/mockUpstreamAdapter';
 import { StdioUpstreamAdapter } from '../adapters/upstream/stdioUpstreamAdapter';
-import { MockUpstreamFile, StdioUpstreamDefinition, UpstreamAdapter } from '../protocol/types';
+import { HttpUpstreamDefinition, MockUpstreamFile, StdioUpstreamDefinition, UpstreamAdapter } from '../protocol/types';
 
 export interface UpstreamSummary {
   id: string;
@@ -13,6 +14,7 @@ export interface UpstreamSummary {
   executable?: string;
   args?: string[];
   cwd?: string;
+  url?: string;
 }
 
 interface PersistedRegistry {
@@ -30,6 +32,10 @@ type PersistedUpstream =
   | {
       type: 'stdio';
       definition: StdioUpstreamDefinition;
+    }
+  | {
+      type: 'http';
+      definition: HttpUpstreamDefinition;
     };
 
 export interface UpstreamRegistryOptions {
@@ -77,6 +83,19 @@ export class UpstreamRegistry {
   addStdioDefinition(definition: StdioUpstreamDefinition): void {
     const adapter = StdioUpstreamAdapter.fromDefinition(definition);
     this.set(definition.id, adapter, true);
+  }
+
+  addHttpDefinition(definition: HttpUpstreamDefinition): void {
+    const adapter = HttpUpstreamAdapter.fromDefinition(definition);
+    this.set(definition.id, adapter, true);
+  }
+
+  getHttpDefinition(id: string): HttpUpstreamDefinition | undefined {
+    const adapter = this.upstreams.get(id);
+    if (!(adapter instanceof HttpUpstreamAdapter)) {
+      return undefined;
+    }
+    return adapter.toDefinition();
   }
 
   getStdioDefinition(id: string): StdioUpstreamDefinition | undefined {
@@ -128,6 +147,10 @@ export class UpstreamRegistry {
     }
 
     if (adapter instanceof StdioUpstreamAdapter) {
+      return adapter.diagnostics();
+    }
+
+    if (adapter instanceof HttpUpstreamAdapter) {
       return adapter.diagnostics();
     }
 
@@ -205,6 +228,10 @@ export class UpstreamRegistry {
         }
       }
 
+      if (adapter instanceof HttpUpstreamAdapter) {
+        summary.url = adapter.url;
+      }
+
       return summary;
     });
   }
@@ -253,6 +280,11 @@ export class UpstreamRegistry {
 
       if (upstream.type === 'stdio') {
         this.set(upstream.definition.id, StdioUpstreamAdapter.fromDefinition(upstream.definition), false);
+        continue;
+      }
+
+      if (upstream.type === 'http') {
+        this.set(upstream.definition.id, HttpUpstreamAdapter.fromDefinition(upstream.definition), false);
       }
     }
   }
@@ -293,6 +325,13 @@ export class UpstreamRegistry {
     if (adapter instanceof StdioUpstreamAdapter) {
       return {
         type: 'stdio',
+        definition: adapter.toDefinition(),
+      };
+    }
+
+    if (adapter instanceof HttpUpstreamAdapter) {
+      return {
+        type: 'http',
         definition: adapter.toDefinition(),
       };
     }

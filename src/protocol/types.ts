@@ -42,6 +42,13 @@ export interface StdioUpstreamDefinition {
   env?: Record<string, string>;
 }
 
+export interface HttpUpstreamDefinition {
+  id: string;
+  name?: string;
+  url: string;
+  headers?: Record<string, string>;
+}
+
 export interface UpstreamTool {
   name: string;
   description?: string;

@@ -19,3 +19,9 @@ export async function runUpstreamAddMockCommand(id: string, file: string): Promi
   await client.addMockUpstream(id, file);
   process.stdout.write(`Added mock upstream '${id}' from ${file}\n`);
 }
+
+export async function runUpstreamAddHttpCommand(id: string, url: string): Promise<void> {
+  const client = createAdminClient();
+  await client.addHttpUpstream({ id, url });
+  process.stdout.write(`Added HTTP upstream '${id}' at ${url}\n`);
+}

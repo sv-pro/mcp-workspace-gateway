@@ -78,6 +78,21 @@ export class GatewayClient {
     });
   }
 
+  async addHttpUpstream(definition: {
+    id: string;
+    name?: string;
+    url: string;
+    headers?: Record<string, string>;
+  }): Promise<void> {
+    await this.request('/api/upstreams/http', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(definition),
+    });
+  }
+
   async removeUpstream(id: string): Promise<void> {
     await this.request(`/api/upstreams/${encodeURIComponent(id)}`, {
       method: 'DELETE',
