@@ -1,9 +1,10 @@
-import { JSON_RPC_ERRORS, createError, createErrorResponse, createSuccess } from '../protocol/mcpJsonRpc';
-import { JsonRpcRequest, JsonRpcResponse, TraceEvent } from '../protocol/types';
-import { SessionManager } from './sessionManager';
-import { ToolRegistry } from './toolRegistry';
-import { TraceStore } from './traceStore';
-import { UpstreamRegistry } from './upstreamRegistry';
+import { JSON_RPC_ERRORS, createError, createErrorResponse, createSuccess } from '../protocol/mcpJsonRpc.js';
+import { JsonRpcRequest, JsonRpcResponse, TraceEvent } from '../protocol/types.js';
+import { ProfileRegistry } from './profileRegistry.js';
+import { SessionManager } from './sessionManager.js';
+import { ToolRegistry } from './toolRegistry.js';
+import { TraceStore } from './traceStore.js';
+import { UpstreamRegistry } from './upstreamRegistry.js';
 
 interface ToolsCallParams {
   name?: string;
@@ -16,6 +17,7 @@ export class Router {
     private readonly upstreamRegistry: UpstreamRegistry,
     private readonly toolRegistry: ToolRegistry,
     private readonly traces: TraceStore,
+    private readonly profiles: ProfileRegistry,
   ) {}
 
   async handle(sessionId: string, request: JsonRpcRequest): Promise<JsonRpcResponse | null> {
@@ -50,7 +52,8 @@ export class Router {
           break;
         }
         case 'tools/list': {
-          const tools = await this.toolRegistry.list();
+          const upstreamFilter = this.resolveUpstreamFilter(sessionId);
+          const tools = await this.toolRegistry.list(upstreamFilter);
           response = createSuccess(request.id, {
             tools: tools.map((tool) => ({
               name: tool.exposed_name,
@@ -66,7 +69,8 @@ export class Router {
             throw createError(JSON_RPC_ERRORS.invalidParams, 'tools/call requires params.name');
           }
 
-          const resolved = await this.toolRegistry.resolveByExposedName(params.name);
+          const upstreamFilter = this.resolveUpstreamFilter(sessionId);
+          const resolved = await this.toolRegistry.resolveByExposedName(params.name, upstreamFilter);
           if (!resolved) {
             throw createError(JSON_RPC_ERRORS.methodNotFound, `Unknown tool: ${params.name}`);
           }
@@ -109,5 +113,14 @@ export class Router {
 
     this.traces.add(trace);
     return response;
+  }
+
+  private resolveUpstreamFilter(sessionId: string): string[] | undefined {
+    const session = this.sessions.list().find((s) => s.session_id === sessionId);
+    if (!session?.profile) {
+      return undefined;
+    }
+    const profile = this.profiles.get(session.profile);
+    return profile?.upstreamIds;
   }
 }

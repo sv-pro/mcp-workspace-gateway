@@ -6,7 +6,7 @@ import { runUpstreamAddHttpCommand, runUpstreamAddMockCommand, runUpstreamListCo
 function usage(): string {
   return `Usage:
   mcp-mux serve
-  mcp-mux client --session <name>
+  mcp-mux client --session <name> [--profile <profile>]
   mcp-mux upstream list
   mcp-mux upstream add-mock <id> <file>
   mcp-mux upstream add-http <id> <url>`;
@@ -34,7 +34,8 @@ async function main(): Promise<void> {
     if (!sessionId) {
       throw new Error(`--session is required\n\n${usage()}`);
     }
-    await runClientCommand(sessionId);
+    const profile = readFlag(args, '--profile');
+    await runClientCommand(sessionId, profile);
     return;
   }
 
