@@ -7,23 +7,40 @@
 - [x] Non-invasive `/api/status` — polling no longer spawns stdio processes; tool counts use a cache populated on first real fetch
 - [x] HTTP upstream adapter — plain HTTP POST JSON-RPC; initialize handshake, tool cache, headers, persistence, CLI `add-http`, web UI type selector
 - [x] Profiles / Worlds — per-session upstream visibility scoping; ProfileRegistry, upstreamFilter in ToolRegistry, Router integration, HTTP CRUD API, CLI `--profile`, web UI panel
+- [x] Tool governance — per-session, per-tool decisions (`allow`/`deny`/`absent`/`simulate`/`ask`); PolicyRegistry, ApprovalQueue, Router decision logic, HTTP CRUD API, real-time approval queue in web UI
 
 ## Up next
 
-### 1. Tool governance
+### 1. Governance-aware trace log
 
-Per-session, per-tool decisions that intercept every `tools/call` before it reaches the upstream. This is what makes the gateway a *safe* proxy, not just a coordinator.
-
-**Decisions:** `allow` (pass through — today's only behavior), `deny` (reject immediately), `absent` (hide from `tools/list` AND reject if called), `simulate` (return a configured mock result without calling the upstream), `ask` (hold the call, surface a pending approval to the web UI, resume or reject based on human response).
+TraceEvent currently captures method, session, tool, and status — but nothing about governance. You can't tell from the trace that a call was denied, simulated, or held for approval. TraceStore is also in-memory (capped at 500 events); restarting the gateway clears the entire audit trail.
 
 **What to build:**
 
-- New types in `src/protocol/types.ts`: `PolicyRule { pattern: string; decision: 'allow'|'deny'|'absent'|'simulate'|'ask'; mock_result?: unknown }` and `GovernancePolicy { id: string; rules: PolicyRule[]; default_decision: 'allow'|'deny' }`. `pattern` is a glob matched against the exposed tool name (e.g. `github_*`, `filesystem_write_file`).
-- `PolicyRegistry` (new `src/server/policyRegistry.ts`): stores and persists policies to `.mcp-mux-policies.json`.
-- `ApprovalQueue` (new `src/server/approvalQueue.ts`): holds pending `tools/call` requests for `ask`-ruled tools. Each entry has a unique approval ID, the original request params, and a Promise that resolves/rejects when the web UI approves or denies. Configurable timeout (e.g. 60 s).
-- `SessionManager`: add `policy?: string` to `SessionSummary`; add `setPolicy(sessionId, policyId)` method.
-- `Router`: before forwarding `tools/call`, evaluate the tool against the session's policy rules (first match wins; fall back to `default_decision`). Apply the matched decision. For `tools/list`, filter out `absent` tools.
-- HTTP API: CRUD for policies (`GET/POST /api/policies`, `GET/DELETE /api/policies/{id}`); `POST /api/sessions/{id}/policy` to assign; `GET /api/approvals` (pending queue), `POST /api/approvals/{id}/allow`, `POST /api/approvals/{id}/deny`.
-- Web UI: policy editor (rule list with pattern + decision), approval queue panel that shows blocked calls and lets the operator allow/deny in real time.
+- Add `policy_id: string | null`, `policy_decision: PolicyDecision | null`, `policy_rule_pattern: string | null` to `TraceEvent` in `src/protocol/types.ts`.
+- Capture governance decision in `Router` (`src/server/router.ts`) and include it in the trace event for every `tools/call`.
+- Persist traces to `.mcp-mux-traces.jsonl` (append-only JSONL; load last N entries on startup) in `src/server/traceStore.ts`.
+- Update web UI trace panel to show `policy_decision` inline when present.
+- Extend `router.test.ts` to assert governance decisions appear in traces; add `traceStore.test.ts`.
 
-**Dependency:** governance sits on top of profiles — profiles define which tools are *visible*, governance defines what happens when they are *called*. Implement profiles first. ✓ (profiles done)
+### 2. Session persistence
+
+`SessionManager` is purely in-memory. Every gateway restart wipes all profile and policy assignments. Operators have to manually reconnect sessions and reassign, which makes governance brittle in practice.
+
+**What to build:**
+
+- Persist session→profile and session→policy assignments to `.mcp-mux-sessions.json` using the same atomic-write pattern as other registries.
+- Restore assignments on startup; auto-expire entries older than a configurable TTL (e.g. 24 h) so stale sessions don't accumulate.
+- Add `GET /api/sessions` as a dedicated endpoint (currently session state is only available embedded in `/api/status`).
+- New `src/test/sessionManager.test.ts` covering persistence roundtrip, TTL expiry, and the new HTTP endpoint.
+
+### 3. CLI for profiles and policies
+
+`GatewayClient` and the CLI only cover upstream management. There are no terminal commands for profiles or policies — everything governance-related is web-UI-only from the command line.
+
+**What to build:**
+
+- Add `listProfiles`, `createProfile`, `deleteProfile`, `listPolicies`, `createPolicy`, `deletePolicy`, `setSessionPolicy` to `GatewayClient` (`src/adapters/gatewayClient.ts`).
+- Add `mcp-mux profile` sub-commands (`list`, `create`, `delete`, `assign`) in new `src/cli/commands/profile.ts`.
+- Add `mcp-mux policy` sub-commands (`list`, `create`, `delete`, `assign`) in new `src/cli/commands/policy.ts`.
+- Wire both into `src/cli/index.ts`.
