@@ -37,7 +37,7 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
       }
 
       if (method === 'GET' && pathname === '/api/status') {
-        return writeJson(res, 200, await gateway.status());
+        return writeJson(res, 200, gateway.status());
       }
 
       if (method === 'GET' && pathname === '/api/upstreams') {

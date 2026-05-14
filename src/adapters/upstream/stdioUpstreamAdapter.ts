@@ -19,6 +19,7 @@ export class StdioUpstreamAdapter implements UpstreamAdapter {
   private nextRequestId = 1;
   private initializePromise: Promise<void> | null = null;
   private readonly pendingRequests = new Map<number, PendingRequest>();
+  private cachedTools: UpstreamTool[] | null = null;
 
   constructor(
     public readonly id: string,
@@ -59,10 +60,16 @@ export class StdioUpstreamAdapter implements UpstreamAdapter {
     };
   }
 
+  listToolsCached(): UpstreamTool[] {
+    return this.cachedTools ?? [];
+  }
+
   async listTools(): Promise<UpstreamTool[]> {
     await this.initialize();
     const result = (await this.request('tools/list', {})) as { tools?: UpstreamTool[] };
-    return result.tools ?? [];
+    const tools = result.tools ?? [];
+    this.cachedTools = tools;
+    return tools;
   }
 
   async callTool(rawToolName: string, args: unknown): Promise<unknown> {

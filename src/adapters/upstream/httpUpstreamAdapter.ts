@@ -5,6 +5,10 @@ export class HttpUpstreamAdapter implements UpstreamAdapter {
 
   constructor(public readonly id: string, public readonly name: string) {}
 
+  listToolsCached(): UpstreamTool[] {
+    return [];
+  }
+
   async listTools(): Promise<UpstreamTool[]> {
     return [];
   }

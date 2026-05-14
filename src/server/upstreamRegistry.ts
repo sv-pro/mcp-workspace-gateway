@@ -182,36 +182,31 @@ export class UpstreamRegistry {
     return [...this.upstreams.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  async listSummaries(): Promise<UpstreamSummary[]> {
-    const adapters = this.listAdapters();
-    const summaries = await Promise.all(
-      adapters.map(async (adapter) => {
-        const summary: UpstreamSummary = {
-          id: adapter.id,
-          type: adapter.type,
-          name: adapter.name,
-          tool_count: (await adapter.listTools()).length,
-        };
+  listSummaries(): UpstreamSummary[] {
+    return this.listAdapters().map((adapter) => {
+      const summary: UpstreamSummary = {
+        id: adapter.id,
+        type: adapter.type,
+        name: adapter.name,
+        tool_count: adapter.listToolsCached().length,
+      };
 
-        if (adapter instanceof MockUpstreamAdapter && adapter.sourceFile) {
-          summary.source_file = adapter.sourceFile;
+      if (adapter instanceof MockUpstreamAdapter && adapter.sourceFile) {
+        summary.source_file = adapter.sourceFile;
+      }
+
+      if (adapter instanceof StdioUpstreamAdapter) {
+        summary.executable = adapter.executable;
+        if (adapter.args.length) {
+          summary.args = adapter.args;
         }
-
-        if (adapter instanceof StdioUpstreamAdapter) {
-          summary.executable = adapter.executable;
-          if (adapter.args.length) {
-            summary.args = adapter.args;
-          }
-          if (adapter.cwd) {
-            summary.cwd = adapter.cwd;
-          }
+        if (adapter.cwd) {
+          summary.cwd = adapter.cwd;
         }
+      }
 
-        return summary;
-      }),
-    );
-
-    return summaries;
+      return summary;
+    });
   }
 
   private set(id: string, adapter: UpstreamAdapter, shouldPersist: boolean): void {

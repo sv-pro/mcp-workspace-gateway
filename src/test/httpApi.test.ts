@@ -216,7 +216,7 @@ test('http api adds stdio upstream config and returns it for editing', async () 
         id: 'fake',
         type: 'stdio',
         name: 'Fake',
-        tool_count: 1,
+        tool_count: 0,
         executable: process.execPath,
         args: ['-e', fakeMcpServerScript],
       },
@@ -234,7 +234,7 @@ test('http api adds stdio upstream config and returns it for editing', async () 
 
     const initialDiagnosticsResponse = await fetch(`${baseUrl}/api/upstreams/fake/diagnostics`);
     assert.equal(initialDiagnosticsResponse.status, 200);
-    assert.equal(((await initialDiagnosticsResponse.json()) as { status: string }).status, 'running');
+    assert.equal(((await initialDiagnosticsResponse.json()) as { status: string }).status, 'stopped');
 
     const testResponse = await fetch(`${baseUrl}/api/upstreams/fake/test`, { method: 'POST' });
     assert.equal(testResponse.status, 200);

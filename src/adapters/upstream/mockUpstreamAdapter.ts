@@ -39,12 +39,16 @@ export class MockUpstreamAdapter implements UpstreamAdapter {
     };
   }
 
-  async listTools(): Promise<UpstreamTool[]> {
+  listToolsCached(): UpstreamTool[] {
     return this.tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
       inputSchema: tool.inputSchema,
     }));
+  }
+
+  async listTools(): Promise<UpstreamTool[]> {
+    return this.listToolsCached();
   }
 
   async callTool(rawToolName: string): Promise<unknown> {

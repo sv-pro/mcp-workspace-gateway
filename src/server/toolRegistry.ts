@@ -10,6 +10,22 @@ export class ToolRegistry {
     return toolsByUpstream.flat().sort((a, b) => a.exposed_name.localeCompare(b.exposed_name));
   }
 
+  listCached(): AggregatedTool[] {
+    return this.upstreamRegistry
+      .listAdapters()
+      .flatMap((adapter) =>
+        adapter.listToolsCached().map((rawTool) => ({
+          canonical_tool_id: `upstreams/${adapter.id}/tools/${rawTool.name}`,
+          exposed_name: `${adapter.id}_${rawTool.name}`,
+          upstream_id: adapter.id,
+          raw_name: rawTool.name,
+          description: rawTool.description,
+          inputSchema: rawTool.inputSchema,
+        })),
+      )
+      .sort((a, b) => a.exposed_name.localeCompare(b.exposed_name));
+  }
+
   async resolveByExposedName(exposedName: string): Promise<AggregatedTool | undefined> {
     const tools = await this.list();
     return tools.find((tool) => tool.exposed_name === exposedName);

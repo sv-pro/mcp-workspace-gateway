@@ -48,18 +48,18 @@ export class GatewayServer {
     return this.router.handle(sessionId, request);
   }
 
-  async status(): Promise<{
+  status(): {
     running: boolean;
-    upstreams: Awaited<ReturnType<UpstreamRegistry['listSummaries']>>;
+    upstreams: ReturnType<UpstreamRegistry['listSummaries']>;
     sessions: ReturnType<SessionManager['list']>;
-    tools: Awaited<ReturnType<ToolRegistry['list']>>;
+    tools: ReturnType<ToolRegistry['listCached']>;
     traces: ReturnType<TraceStore['list']>;
-  }> {
+  } {
     return {
       running: true,
-      upstreams: await this.upstreams.listSummaries(),
+      upstreams: this.upstreams.listSummaries(),
       sessions: this.sessions.list(),
-      tools: await this.tools.list(),
+      tools: this.tools.listCached(),
       traces: this.traces.list(),
     };
   }

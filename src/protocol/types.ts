@@ -53,6 +53,7 @@ export interface UpstreamAdapter {
   type: 'mock' | 'stdio' | 'http';
   name: string;
   listTools(): Promise<UpstreamTool[]>;
+  listToolsCached(): UpstreamTool[];
   callTool(rawToolName: string, args: unknown): Promise<unknown>;
 }
 

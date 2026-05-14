@@ -127,12 +127,12 @@ test('upstream registry supports stdio definitions', async () => {
       env: { LOG_LEVEL: 'debug' },
     });
 
-    assert.deepEqual(await upstreams.listSummaries(), [
+    assert.deepEqual(upstreams.listSummaries(), [
       {
         id: 'fake',
         type: 'stdio',
         name: 'Fake',
-        tool_count: 1,
+        tool_count: 0,
         executable: process.execPath,
         args: ['-e', fakeMcpServerScript],
       },
@@ -144,6 +144,27 @@ test('upstream registry supports stdio definitions', async () => {
       args: ['-e', fakeMcpServerScript],
       env: { LOG_LEVEL: 'debug' },
     });
+  } finally {
+    upstreams.closeAll();
+  }
+});
+
+test('listSummaries does not spawn stdio processes; tool_count reflects cache after explicit fetch', async () => {
+  const upstreams = new UpstreamRegistry();
+
+  try {
+    upstreams.addStdioDefinition({
+      id: 'fake',
+      executable: process.execPath,
+      args: ['-e', fakeMcpServerScript],
+    });
+
+    assert.equal(upstreams.listSummaries()[0]?.tool_count, 0);
+
+    const result = await upstreams.test('fake');
+    assert.equal(result?.tool_count, 1);
+
+    assert.equal(upstreams.listSummaries()[0]?.tool_count, 1);
   } finally {
     upstreams.closeAll();
   }
@@ -184,7 +205,7 @@ test('upstream registry persists and reloads upstream definitions', async () => 
           id: 'stdio',
           type: 'stdio',
           name: 'Stdio',
-          tool_count: 1,
+          tool_count: 0,
         },
       ],
     );
