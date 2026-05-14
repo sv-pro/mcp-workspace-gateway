@@ -7,3 +7,4 @@ npm-debug.log*
 .mcp-mux-templates.json
 .mcp-mux-profiles.json
 .mcp-mux-policies.json
+.mcp-mux-traces.jsonl
