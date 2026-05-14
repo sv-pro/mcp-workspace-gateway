@@ -8,9 +8,11 @@ export interface GatewayClientOptions {
 export class GatewayClient {
   constructor(private readonly options: GatewayClientOptions) {}
 
-  async connect(): Promise<void> {
+  async connect(profile?: string): Promise<void> {
     await this.request(`/api/sessions/${encodeURIComponent(this.options.sessionId)}/connect`, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: profile ? JSON.stringify({ profile }) : '{}',
     });
   }
 

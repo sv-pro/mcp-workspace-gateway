@@ -3,6 +3,7 @@ export interface SessionSummary {
   status: 'connected';
   connected_at: string;
   last_seen_at: string;
+  profile?: string;
 }
 
 export class SessionManager {
@@ -33,6 +34,15 @@ export class SessionManager {
       return;
     }
     session.last_seen_at = new Date().toISOString();
+  }
+
+  setProfile(sessionId: string, profileId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return false;
+    }
+    session.profile = profileId;
+    return true;
   }
 
   disconnect(sessionId: string): void {

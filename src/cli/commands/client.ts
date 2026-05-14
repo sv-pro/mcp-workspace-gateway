@@ -1,12 +1,13 @@
 import { runStdioClientAdapter } from '../../adapters/stdioClientAdapter';
 
-export async function runClientCommand(sessionId: string): Promise<void> {
+export async function runClientCommand(sessionId: string, profile?: string): Promise<void> {
   const gatewayUrl = process.env.MCP_MUX_GATEWAY_URL ?? `http://${process.env.MCP_MUX_HOST ?? '127.0.0.1'}:${process.env.MCP_MUX_PORT ?? '8787'}`;
 
   try {
     await runStdioClientAdapter({
       sessionId,
       gatewayUrl,
+      profile,
     });
   } catch (error) {
     process.stderr.write(

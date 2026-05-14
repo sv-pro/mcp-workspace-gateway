@@ -73,6 +73,11 @@ export interface AggregatedTool {
   inputSchema?: Record<string, unknown>;
 }
 
+export interface Profile {
+  id: string;
+  upstreamIds: string[];
+}
+
 export interface TraceEvent {
   timestamp: string;
   session_id: string;

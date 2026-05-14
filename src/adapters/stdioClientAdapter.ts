@@ -5,6 +5,7 @@ import { parseJsonRpcMessage } from '../protocol/mcpJsonRpc';
 export interface StdioClientAdapterOptions {
   sessionId: string;
   gatewayUrl: string;
+  profile?: string;
 }
 
 export async function runStdioClientAdapter(options: StdioClientAdapterOptions): Promise<void> {
@@ -13,7 +14,7 @@ export async function runStdioClientAdapter(options: StdioClientAdapterOptions):
     sessionId: options.sessionId,
   });
 
-  await client.connect();
+  await client.connect(options.profile);
 
   const rl = readline.createInterface({
     input: process.stdin,

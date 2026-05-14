@@ -1,21 +1,24 @@
 import path from 'node:path';
-import { JsonRpcRequest, JsonRpcResponse } from '../protocol/types';
-import { Router } from './router';
-import { SessionManager } from './sessionManager';
-import { ToolRegistry } from './toolRegistry';
-import { TraceStore } from './traceStore';
-import { UpstreamTemplateRegistry } from './upstreamTemplateRegistry';
-import { UpstreamRegistry } from './upstreamRegistry';
+import { JsonRpcRequest, JsonRpcResponse } from '../protocol/types.js';
+import { ProfileRegistry } from './profileRegistry.js';
+import { Router } from './router.js';
+import { SessionManager } from './sessionManager.js';
+import { ToolRegistry } from './toolRegistry.js';
+import { TraceStore } from './traceStore.js';
+import { UpstreamTemplateRegistry } from './upstreamTemplateRegistry.js';
+import { UpstreamRegistry } from './upstreamRegistry.js';
 
 export interface GatewayServerOptions {
   upstreamsFile?: string | null;
   templatesFile?: string | null;
+  profilesFile?: string | null;
 }
 
 export class GatewayServer {
   readonly sessions = new SessionManager();
   readonly upstreams: UpstreamRegistry;
   readonly templates: UpstreamTemplateRegistry;
+  readonly profiles: ProfileRegistry;
   readonly traces = new TraceStore();
   readonly tools: ToolRegistry;
   private readonly router: Router;
@@ -29,15 +32,23 @@ export class GatewayServer {
       options.templatesFile === undefined
         ? path.resolve(process.cwd(), process.env.MCP_MUX_TEMPLATES_FILE ?? '.mcp-mux-templates.json')
         : options.templatesFile;
+    const profilesFile =
+      options.profilesFile === undefined
+        ? path.resolve(process.cwd(), '.mcp-mux-profiles.json')
+        : options.profilesFile;
 
     this.upstreams = new UpstreamRegistry({ persistenceFile: upstreamsFile });
     this.templates = new UpstreamTemplateRegistry({ persistenceFile: templatesFile });
+    this.profiles = new ProfileRegistry({ persistenceFile: profilesFile });
     this.tools = new ToolRegistry(this.upstreams);
-    this.router = new Router(this.sessions, this.upstreams, this.tools, this.traces);
+    this.router = new Router(this.sessions, this.upstreams, this.tools, this.traces, this.profiles);
   }
 
-  connectSession(sessionId: string): void {
+  connectSession(sessionId: string, profileId?: string): void {
     this.sessions.connect(sessionId);
+    if (profileId) {
+      this.sessions.setProfile(sessionId, profileId);
+    }
   }
 
   disconnectSession(sessionId: string): void {

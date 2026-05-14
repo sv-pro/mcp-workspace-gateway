@@ -45,6 +45,8 @@
       .notice.error { background: #fef2f2; color: #b91c1c; }
       .notice.success { background: #f0fdf4; color: #15803d; }
       .empty { color: #64748b; padding: 12px 0; }
+      .checkbox-row { align-items: center; display: flex; gap: 8px; }
+      .checkbox-row label { font-size: 0.9rem; }
       @media (max-width: 760px) {
         .grid, .manager-grid { grid-template-columns: 1fr; }
       }
@@ -62,8 +64,11 @@
         </div>
         <ul id="upstreams"></ul>
       </section>
-      <section>
-        <h2>Sessions</h2>
+      <section id="sessions-panel">
+        <div class="panel-title">
+          <h2>Sessions</h2>
+          <span class="hint">Profiles</span>
+        </div>
         <ul id="sessions"></ul>
       </section>
       <section>
@@ -75,6 +80,38 @@
         <ul id="traces"></ul>
       </section>
     </div>
+
+    <section id="profiles-manager" class="manager hidden" aria-live="polite">
+      <div class="manager-header">
+        <div>
+          <h2>Profiles</h2>
+          <div class="hint">Profiles scope which upstreams a session can see.</div>
+        </div>
+        <button id="close-profiles-manager" class="secondary" type="button">Close</button>
+      </div>
+      <div id="profile-message"></div>
+      <div class="manager-grid">
+        <div>
+          <h3>Profiles</h3>
+          <div id="profile-list" class="upstream-cards"></div>
+        </div>
+        <form id="profile-form" class="form-stack">
+          <h3>Create Profile</h3>
+          <div class="field">
+            <label for="profile-id">ID</label>
+            <input id="profile-id" name="id" autocomplete="off" required />
+          </div>
+          <div class="field">
+            <label>Upstreams</label>
+            <div id="profile-upstream-checkboxes" class="form-stack"></div>
+          </div>
+          <div class="actions">
+            <button class="primary" type="submit">Create Profile</button>
+            <button id="cancel-profile" class="secondary" type="button">Clear</button>
+          </div>
+        </form>
+      </div>
+    </section>
 
     <section id="upstream-manager" class="manager hidden" aria-live="polite">
       <div class="manager-header">
@@ -164,8 +201,10 @@
       const el = (id) => document.getElementById(id);
       let currentStatus = { upstreams: [], sessions: [], tools: [], traces: [] };
       let managerOpen = false;
+      let profilesManagerOpen = false;
       let editingUpstreamId = null;
       let upstreamTemplates = [];
+      let allProfiles = [];
       const upstreamDebugOutputs = new Map();
       const upstreamDebugScrollTops = new Map();
       let managerRenderSignature = '';
@@ -549,13 +588,14 @@
 
         el('gateway-status').textContent = `Gateway: ${currentStatus.running ? 'running' : 'stopped'}`;
         list('upstreams', currentStatus.upstreams.map((u) => `${u.id} (${u.type}, tools: ${u.tool_count})`));
-        list('sessions', currentStatus.sessions.map((s) => `${s.session_id}: ${s.status}`));
+        list('sessions', currentStatus.sessions.map((s) => `${s.session_id}: ${s.status}${s.profile ? ` [${s.profile}]` : ''}`));
         list('tools', currentStatus.tools.map((t) => t.exposed_name));
         list(
           'traces',
           currentStatus.traces.slice(0, 20).map((t) => `${t.method} from ${t.session_id} -> ${t.status}${t.exposed_tool_name ? ` (${t.exposed_tool_name})` : ''}`),
         );
         renderManager();
+        renderProfilesManager();
       }
 
       async function saveUpstream(event) {
@@ -746,6 +786,161 @@
         }
       }
 
+      const loadProfiles = async () => {
+        const response = await fetch('/api/profiles');
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        allProfiles = await response.json();
+      };
+
+      const renderProfilesManager = () => {
+        const manager = el('profiles-manager');
+        manager.classList.toggle('hidden', !profilesManagerOpen);
+        if (!profilesManagerOpen) {
+          return;
+        }
+
+        const listNode = el('profile-list');
+        listNode.innerHTML = '';
+
+        if (!allProfiles.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'No profiles defined.';
+          listNode.appendChild(empty);
+        }
+
+        for (const profile of allProfiles) {
+          const card = document.createElement('article');
+          card.className = 'upstream-card';
+
+          const header = document.createElement('header');
+          const title = document.createElement('h3');
+          title.textContent = profile.id;
+          header.appendChild(title);
+
+          const meta = document.createElement('div');
+          meta.className = 'upstream-meta';
+          meta.textContent = profile.upstreamIds.length
+            ? `Upstreams: ${profile.upstreamIds.join(', ')}`
+            : 'No upstreams (blocks all tools)';
+
+          const sessions = currentStatus.sessions.filter((s) => s.profile === profile.id);
+          if (sessions.length) {
+            const sessionNote = document.createElement('div');
+            sessionNote.className = 'hint';
+            sessionNote.textContent = `Active sessions: ${sessions.map((s) => s.session_id).join(', ')}`;
+            card.append(header, meta, sessionNote);
+          } else {
+            card.append(header, meta);
+          }
+
+          const actions = document.createElement('div');
+          actions.className = 'actions';
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'danger';
+          removeBtn.type = 'button';
+          removeBtn.textContent = 'Delete';
+          removeBtn.addEventListener('click', async () => {
+            if (!window.confirm(`Delete profile '${profile.id}'?`)) {
+              return;
+            }
+            try {
+              const res = await fetch(`/api/profiles/${encodeURIComponent(profile.id)}`, { method: 'DELETE' });
+              if (!res.ok) {
+                throw new Error(await res.text());
+              }
+              await loadProfiles();
+              renderProfilesManager();
+            } catch (error) {
+              showProfileMessage(`Unable to delete profile: ${error.message}`, 'error');
+            }
+          });
+
+          actions.appendChild(removeBtn);
+          card.appendChild(actions);
+          listNode.appendChild(card);
+        }
+
+        const checkboxContainer = el('profile-upstream-checkboxes');
+        checkboxContainer.innerHTML = '';
+        if (!currentStatus.upstreams.length) {
+          checkboxContainer.textContent = '(no upstreams registered)';
+        }
+        for (const upstream of currentStatus.upstreams) {
+          const row = document.createElement('div');
+          row.className = 'checkbox-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.id = `profile-upstream-${upstream.id}`;
+          checkbox.value = upstream.id;
+          const label = document.createElement('label');
+          label.htmlFor = checkbox.id;
+          label.textContent = upstream.id;
+          row.append(checkbox, label);
+          checkboxContainer.appendChild(row);
+        }
+      };
+
+      const showProfileMessage = (message, type = 'info') => {
+        const node = el('profile-message');
+        node.innerHTML = '';
+        if (!message) {
+          return;
+        }
+        const notice = document.createElement('div');
+        notice.className = `notice ${type}`;
+        notice.textContent = message;
+        node.appendChild(notice);
+      };
+
+      async function saveProfile(event) {
+        event.preventDefault();
+        const id = el('profile-id').value.trim();
+        if (!id) {
+          showProfileMessage('ID is required.', 'error');
+          return;
+        }
+        const upstreamIds = [...el('profile-upstream-checkboxes').querySelectorAll('input[type=checkbox]:checked')]
+          .map((cb) => cb.value);
+        try {
+          const res = await fetch('/api/profiles', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id, upstreamIds }),
+          });
+          if (!res.ok) {
+            throw new Error(await res.text());
+          }
+          el('profile-form').reset();
+          await loadProfiles();
+          renderProfilesManager();
+          showProfileMessage(`Profile '${id}' created.`, 'success');
+        } catch (error) {
+          showProfileMessage(`Unable to create profile: ${error.message}`, 'error');
+        }
+      }
+
+      el('sessions-panel').addEventListener('click', async () => {
+        profilesManagerOpen = !profilesManagerOpen;
+        if (profilesManagerOpen) {
+          await loadProfiles();
+        }
+        renderProfilesManager();
+      });
+      el('close-profiles-manager').addEventListener('click', () => {
+        profilesManagerOpen = false;
+        showProfileMessage('');
+        renderProfilesManager();
+      });
+      el('profile-form').addEventListener('submit', saveProfile);
+      el('cancel-profile').addEventListener('click', () => {
+        el('profile-form').reset();
+        showProfileMessage('');
+      });
+
       el('upstreams-panel').addEventListener('click', openManager);
       el('upstreams-panel').addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -791,7 +986,7 @@
       applyTypeVisibility();
       updateGeneratedJson();
 
-      Promise.all([loadTemplates(), refresh()]).catch((error) => {
+      Promise.all([loadTemplates(), loadProfiles(), refresh()]).catch((error) => {
         el('gateway-status').textContent = `Gateway: error (${error.message})`;
       });
       setInterval(() => refresh().catch(() => {}), 2000);

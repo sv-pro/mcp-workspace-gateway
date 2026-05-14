@@ -308,12 +308,43 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
         return writeJson(res, 200, { ok: true });
       }
 
+      if (method === 'GET' && pathname === '/api/profiles') {
+        return writeJson(res, 200, gateway.profiles.list());
+      }
+
+      if (method === 'POST' && pathname === '/api/profiles') {
+        const body = await readJson<{ id?: string; upstreamIds?: string[] }>(req);
+        if (!body.id || !Array.isArray(body.upstreamIds)) {
+          return writeJson(res, 400, { error: 'id and upstreamIds are required' });
+        }
+        return writeJson(res, 201, gateway.profiles.upsert({ id: body.id, upstreamIds: body.upstreamIds }));
+      }
+
+      const profilePathParts = pathname.split('/');
+      if (method === 'GET' && profilePathParts[1] === 'api' && profilePathParts[2] === 'profiles' && profilePathParts.length === 4) {
+        const profileId = decodeURIComponent(profilePathParts[3] ?? '');
+        const profile = gateway.profiles.get(profileId);
+        if (!profile) {
+          return writeJson(res, 404, { error: `Profile not found: ${profileId}` });
+        }
+        return writeJson(res, 200, profile);
+      }
+
+      if (method === 'DELETE' && profilePathParts[1] === 'api' && profilePathParts[2] === 'profiles' && profilePathParts.length === 4) {
+        const profileId = decodeURIComponent(profilePathParts[3] ?? '');
+        if (!gateway.profiles.remove(profileId)) {
+          return writeJson(res, 404, { error: `Profile not found: ${profileId}` });
+        }
+        return writeJson(res, 200, { ok: true });
+      }
+
       if (method === 'POST' && pathname.startsWith('/api/sessions/') && pathname.endsWith('/connect')) {
         const sessionId = decodeURIComponent(pathname.split('/')[3] ?? '');
         if (!sessionId) {
           return writeJson(res, 400, { error: 'session_id is required' });
         }
-        gateway.connectSession(sessionId);
+        const body = await readJson<{ profile?: string }>(req);
+        gateway.connectSession(sessionId, body.profile);
         return writeJson(res, 200, { ok: true });
       }
 
@@ -323,6 +354,21 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
           return writeJson(res, 400, { error: 'session_id is required' });
         }
         gateway.disconnectSession(sessionId);
+        return writeJson(res, 200, { ok: true });
+      }
+
+      if (method === 'POST' && pathname.startsWith('/api/sessions/') && pathname.endsWith('/profile')) {
+        const sessionId = decodeURIComponent(pathname.split('/')[3] ?? '');
+        if (!sessionId) {
+          return writeJson(res, 400, { error: 'session_id is required' });
+        }
+        const body = await readJson<{ profileId?: string }>(req);
+        if (!body.profileId) {
+          return writeJson(res, 400, { error: 'profileId is required' });
+        }
+        if (!gateway.sessions.setProfile(sessionId, body.profileId)) {
+          return writeJson(res, 404, { error: `Session not found: ${sessionId}` });
+        }
         return writeJson(res, 200, { ok: true });
       }
 
