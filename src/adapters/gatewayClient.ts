@@ -123,6 +123,11 @@ export class GatewayClient {
     return response.json();
   }
 
+  async listSessions(): Promise<unknown[]> {
+    const response = await this.request('/api/sessions', { method: 'GET' });
+    return response.json();
+  }
+
   async createPolicy(policy: GovernancePolicy): Promise<void> {
     await this.request('/api/policies', {
       method: 'POST',

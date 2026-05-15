@@ -3,6 +3,7 @@ import { runClientCommand } from './commands/client.js';
 import { runPolicyAssignCommand, runPolicyCreateCommand, runPolicyDeleteCommand, runPolicyListCommand } from './commands/policy.js';
 import { runProfileAssignCommand, runProfileCreateCommand, runProfileDeleteCommand, runProfileListCommand } from './commands/profile.js';
 import { runServeCommand } from './commands/serve.js';
+import { runSessionListCommand } from './commands/session.js';
 import { runUpstreamAddHttpCommand, runUpstreamAddMockCommand, runUpstreamListCommand } from './commands/upstream.js';
 
 function usage(): string {
@@ -22,7 +23,9 @@ function usage(): string {
   mcp-mux policy list
   mcp-mux policy create <id> <allow|deny>
   mcp-mux policy delete <id>
-  mcp-mux policy assign <session_id> <policy_id>`;
+  mcp-mux policy assign <session_id> <policy_id>
+
+  mcp-mux session list`;
 }
 
 function readFlag(args: string[], name: string): string | undefined {
@@ -140,6 +143,13 @@ async function main(): Promise<void> {
         throw new Error(`assign requires <session_id> <policy_id>\n\n${usage()}`);
       }
       await runPolicyAssignCommand(sessionId, policyId);
+      return;
+    }
+  }
+
+  if (command === 'session') {
+    if (subcommand === 'list') {
+      await runSessionListCommand();
       return;
     }
   }
