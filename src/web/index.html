@@ -30,6 +30,11 @@
       .upstream-card header { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
       .upstream-card h3 { margin: 0; }
       .upstream-meta { color: #475569; margin: 8px 0; }
+      .upstream-health { align-items: center; display: flex; gap: 6px; margin: 4px 0; }
+      .health-dot { border-radius: 50%; display: inline-block; flex-shrink: 0; height: 8px; width: 8px; }
+      .health-dot-ok { background: #22c55e; }
+      .health-dot-error { background: #ef4444; }
+      .health-dot-unknown { background: #94a3b8; }
       .upstream-file { word-break: break-all; }
       .debug-output { background: #0f172a; border-radius: 6px; color: #e2e8f0; margin-top: 10px; max-height: 260px; overflow: auto; padding: 10px; white-space: pre-wrap; word-break: break-word; }
       .actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -587,6 +592,29 @@
           meta.className = 'upstream-meta';
           meta.textContent = `${upstream.name} - tools: ${upstream.tool_count}`;
 
+          const healthRow = document.createElement('div');
+          healthRow.className = 'upstream-health';
+          if (upstream.health) {
+            const dot = document.createElement('span');
+            dot.className = `health-dot health-dot-${upstream.health.ok ? 'ok' : 'error'}`;
+            const label = document.createElement('span');
+            label.className = 'hint';
+            label.textContent = upstream.health.ok
+              ? `${upstream.health.duration_ms}ms`
+              : (upstream.health.error ?? 'error');
+            const when = document.createElement('span');
+            when.className = 'hint';
+            when.textContent = `· checked ${fmtTime(upstream.health.checked_at)}`;
+            healthRow.append(dot, label, when);
+          } else {
+            const unknownDot = document.createElement('span');
+            unknownDot.className = 'health-dot health-dot-unknown';
+            const label = document.createElement('span');
+            label.className = 'hint';
+            label.textContent = 'not checked yet';
+            healthRow.append(unknownDot, label);
+          }
+
           const file = document.createElement('div');
           file.className = 'upstream-file';
           if (upstream.type === 'stdio') {
@@ -661,7 +689,7 @@
           });
 
           actions.append(edit, diagnostics, test, restart, remove);
-          card.append(header, meta, file, actions, output);
+          card.append(header, meta, healthRow, file, actions, output);
           listNode.appendChild(card);
           const scrollTop = upstreamDebugScrollTops.get(upstream.id) ?? 0;
           requestAnimationFrame(() => {

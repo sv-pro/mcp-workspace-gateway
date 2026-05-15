@@ -13,9 +13,12 @@ export async function runServeCommand(): Promise<void> {
   process.stdout.write(`mcp-mux gateway running on http://${host}:${actualPort}\n`);
   process.stdout.write(`Web UI: http://${host}:${actualPort}\n`);
 
+  gateway.health.start();
+
   await new Promise<void>((resolve) => {
     const keepAlive = setInterval(() => undefined, 2 ** 30);
     const stop = (): void => {
+      gateway.health.stop();
       clearInterval(keepAlive);
       gateway.upstreams.closeAll();
       server.close(() => resolve());

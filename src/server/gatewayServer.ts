@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { JsonRpcRequest, JsonRpcResponse } from '../protocol/types.js';
 import { ApprovalQueue } from './approvalQueue.js';
+import { HealthMonitor } from './healthMonitor.js';
 import { PolicyRegistry } from './policyRegistry.js';
 import { ProfileRegistry } from './profileRegistry.js';
 import { Router } from './router.js';
@@ -28,6 +29,7 @@ export class GatewayServer {
   readonly approvals = new ApprovalQueue();
   readonly traces: TraceStore;
   readonly tools: ToolRegistry;
+  readonly health: HealthMonitor;
   private readonly router: Router;
 
   constructor(options: GatewayServerOptions = {}) {
@@ -64,6 +66,7 @@ export class GatewayServer {
     this.policies = new PolicyRegistry({ persistenceFile: policiesFile });
     this.sessions = new SessionManager({ persistenceFile: sessionsFile });
     this.tools = new ToolRegistry(this.upstreams);
+    this.health = new HealthMonitor(this.upstreams);
     this.router = new Router(
       this.sessions,
       this.upstreams,

@@ -5,6 +5,13 @@ import { MockUpstreamAdapter } from '../adapters/upstream/mockUpstreamAdapter';
 import { StdioUpstreamAdapter } from '../adapters/upstream/stdioUpstreamAdapter';
 import { HttpUpstreamDefinition, MockUpstreamFile, StdioUpstreamDefinition, UpstreamAdapter } from '../protocol/types';
 
+export interface HealthCheck {
+  ok: boolean;
+  duration_ms: number;
+  error?: string;
+  checked_at: string;
+}
+
 export interface UpstreamSummary {
   id: string;
   type: UpstreamAdapter['type'];
@@ -15,6 +22,7 @@ export interface UpstreamSummary {
   args?: string[];
   cwd?: string;
   url?: string;
+  health?: HealthCheck;
 }
 
 interface PersistedRegistry {
@@ -53,6 +61,7 @@ export interface UpstreamTestResult {
 
 export class UpstreamRegistry {
   private readonly upstreams = new Map<string, UpstreamAdapter>();
+  private readonly healthChecks = new Map<string, HealthCheck>();
   private readonly persistenceFile: string | null;
 
   constructor(options: UpstreamRegistryOptions = {}) {
@@ -107,6 +116,10 @@ export class UpstreamRegistry {
     return adapter.toDefinition();
   }
 
+  recordHealthCheck(id: string, result: HealthCheck): void {
+    this.healthChecks.set(id, result);
+  }
+
   remove(id: string): boolean {
     const adapter = this.upstreams.get(id);
     if (!adapter) {
@@ -114,6 +127,7 @@ export class UpstreamRegistry {
     }
 
     this.closeAdapter(adapter);
+    this.healthChecks.delete(id);
     const removed = this.upstreams.delete(id);
     this.persist();
     return removed;
@@ -230,6 +244,11 @@ export class UpstreamRegistry {
 
       if (adapter instanceof HttpUpstreamAdapter) {
         summary.url = adapter.url;
+      }
+
+      const health = this.healthChecks.get(adapter.id);
+      if (health) {
+        summary.health = health;
       }
 
       return summary;
