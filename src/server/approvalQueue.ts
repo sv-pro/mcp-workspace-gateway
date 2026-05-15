@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ApprovalSummary } from '../protocol/types.js';
+import { EventBus } from './eventBus.js';
 
 interface PendingApproval {
   id: string;
@@ -13,6 +14,11 @@ interface PendingApproval {
 
 export class ApprovalQueue {
   private readonly pending = new Map<string, PendingApproval>();
+  private readonly events: EventBus | null;
+
+  constructor(events: EventBus | null = null) {
+    this.events = events;
+  }
 
   enqueue(sessionId: string, exposedName: string, args: unknown, timeoutMs = 60_000): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
@@ -21,7 +27,7 @@ export class ApprovalQueue {
         this.decide(id, false);
       }, timeoutMs);
 
-      this.pending.set(id, {
+      const entry: PendingApproval = {
         id,
         session_id: sessionId,
         exposed_name: exposedName,
@@ -29,6 +35,12 @@ export class ApprovalQueue {
         created_at: new Date().toISOString(),
         timer,
         resolve,
+      };
+      this.pending.set(id, entry);
+      this.events?.publish({
+        kind: 'approval',
+        action: 'enqueued',
+        approval: { id, session_id: sessionId, exposed_name: exposedName, args, created_at: entry.created_at },
       });
     });
   }
@@ -52,6 +64,7 @@ export class ApprovalQueue {
     }
     clearTimeout(entry.timer);
     this.pending.delete(id);
+    this.events?.publish({ kind: 'approval', action: 'decided', id, allowed: allow });
     entry.resolve(allow);
     return true;
   }

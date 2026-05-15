@@ -469,6 +469,31 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
         return writeJson(res, 200, response);
       }
 
+      if (method === 'GET' && pathname === '/api/events') {
+        res.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+          'connection': 'keep-alive',
+          'x-accel-buffering': 'no',
+        });
+        res.write(': connected\n\n');
+
+        const unsub = gateway.events.subscribe((event) => {
+          res.write(`data: ${JSON.stringify(event)}\n\n`);
+        });
+
+        const heartbeat = setInterval(() => {
+          res.write(': heartbeat\n\n');
+        }, 30_000);
+
+        req.on('close', () => {
+          clearInterval(heartbeat);
+          unsub();
+        });
+
+        return;
+      }
+
       if (method === 'GET' && pathname === '/') {
         const filePath = path.resolve(__dirname, '../web/index.html');
         const html = await fs.readFile(filePath, 'utf8');
