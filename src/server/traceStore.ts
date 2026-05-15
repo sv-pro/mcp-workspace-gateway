@@ -1,13 +1,17 @@
 import fs from 'node:fs';
 import { TraceEvent } from '../protocol/types.js';
+import { EventBus } from './eventBus.js';
 
 export class TraceStore {
   private readonly events: TraceEvent[] = [];
+  private readonly bus: EventBus | null;
 
   constructor(
     private readonly maxEvents = 500,
     private readonly tracesFile: string | null = null,
+    bus: EventBus | null = null,
   ) {
+    this.bus = bus;
     if (tracesFile) {
       this.loadFromDisk();
     }
@@ -25,6 +29,7 @@ export class TraceStore {
         // non-fatal: in-memory ring buffer still works
       }
     }
+    this.bus?.publish({ kind: 'trace', trace: event });
   }
 
   list(): TraceEvent[] {

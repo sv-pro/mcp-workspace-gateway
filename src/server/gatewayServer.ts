@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { JsonRpcRequest, JsonRpcResponse } from '../protocol/types.js';
 import { ApprovalQueue } from './approvalQueue.js';
+import { EventBus } from './eventBus.js';
 import { PolicyRegistry } from './policyRegistry.js';
 import { ProfileRegistry } from './profileRegistry.js';
 import { Router } from './router.js';
@@ -20,12 +21,13 @@ export interface GatewayServerOptions {
 }
 
 export class GatewayServer {
+  readonly events = new EventBus();
   readonly sessions: SessionManager;
   readonly upstreams: UpstreamRegistry;
   readonly templates: UpstreamTemplateRegistry;
   readonly profiles: ProfileRegistry;
   readonly policies: PolicyRegistry;
-  readonly approvals = new ApprovalQueue();
+  readonly approvals: ApprovalQueue;
   readonly traces: TraceStore;
   readonly tools: ToolRegistry;
   private readonly router: Router;
@@ -57,7 +59,8 @@ export class GatewayServer {
         ? path.resolve(process.cwd(), '.mcp-mux-traces.jsonl')
         : options.tracesFile;
 
-    this.traces = new TraceStore(500, tracesFile);
+    this.traces = new TraceStore(500, tracesFile, this.events);
+    this.approvals = new ApprovalQueue(this.events);
     this.upstreams = new UpstreamRegistry({ persistenceFile: upstreamsFile });
     this.templates = new UpstreamTemplateRegistry({ persistenceFile: templatesFile });
     this.profiles = new ProfileRegistry({ persistenceFile: profilesFile });
@@ -72,6 +75,7 @@ export class GatewayServer {
       this.profiles,
       this.policies,
       this.approvals,
+      this.events,
     );
   }
 
@@ -80,10 +84,18 @@ export class GatewayServer {
     if (profileId) {
       this.sessions.setProfile(sessionId, profileId);
     }
+    this.events.publish({
+      kind: 'session',
+      data: { timestamp: new Date().toISOString(), session_id: sessionId, type: 'connected' },
+    });
   }
 
   disconnectSession(sessionId: string): void {
     this.sessions.disconnect(sessionId);
+    this.events.publish({
+      kind: 'session',
+      data: { timestamp: new Date().toISOString(), session_id: sessionId, type: 'disconnected' },
+    });
   }
 
   async handleRpc(sessionId: string, request: JsonRpcRequest): Promise<JsonRpcResponse | null> {

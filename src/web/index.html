@@ -1510,7 +1510,32 @@
       Promise.all([loadTemplates(), loadProfiles(), loadPolicies(), refresh()]).catch((error) => {
         el('gateway-status').textContent = `Gateway: error (${error.message})`;
       });
-      setInterval(() => refresh().catch(() => {}), 2000);
+
+      const sse = new EventSource('/api/events');
+      sse.onopen = () => {
+        refresh().catch(() => {});
+      };
+      sse.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.kind === 'approval') {
+            fetch('/api/approvals')
+              .then((r) => r.json())
+              .then((data) => {
+                allApprovals = data;
+                el('approvals-hint').textContent = `Pending: ${allApprovals.length}`;
+                list('approvals-summary', allApprovals.map((a) => `${a.exposed_name} — session: ${a.session_id}`));
+                renderApprovalsManager();
+              })
+              .catch(() => {});
+          } else {
+            refresh().catch(() => {});
+          }
+        } catch {
+          refresh().catch(() => {});
+        }
+      };
+      setInterval(() => refresh().catch(() => {}), 30_000);
     </script>
   </body>
 </html>

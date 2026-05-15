@@ -1,6 +1,7 @@
 import { JSON_RPC_ERRORS, createError, createErrorResponse, createSuccess } from '../protocol/mcpJsonRpc.js';
 import { JsonRpcRequest, JsonRpcResponse, PolicyDecision, TraceEvent } from '../protocol/types.js';
 import { ApprovalQueue } from './approvalQueue.js';
+import { EventBus } from './eventBus.js';
 import { PolicyRegistry } from './policyRegistry.js';
 import { ProfileRegistry } from './profileRegistry.js';
 import { SessionManager } from './sessionManager.js';
@@ -22,6 +23,7 @@ export class Router {
     private readonly profiles: ProfileRegistry,
     private readonly policyRegistry: PolicyRegistry,
     private readonly approvalQueue: ApprovalQueue,
+    private readonly events: EventBus | null = null,
   ) {}
 
   async handle(sessionId: string, request: JsonRpcRequest): Promise<JsonRpcResponse | null> {
@@ -151,6 +153,10 @@ export class Router {
     }
 
     this.traces.add(trace);
+    this.events?.publish({
+      kind: 'session',
+      data: { timestamp: trace.timestamp, session_id: sessionId, type: 'rpc', method: request.method },
+    });
     return response;
   }
 
