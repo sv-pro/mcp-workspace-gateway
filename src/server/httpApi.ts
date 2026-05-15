@@ -384,6 +384,10 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
         return writeJson(res, 200, gateway.approvals.list());
       }
 
+      if (method === 'GET' && pathname === '/api/sessions') {
+        return writeJson(res, 200, gateway.sessions.list());
+      }
+
       const approvalPathParts = pathname.split('/');
       if (
         method === 'POST' &&

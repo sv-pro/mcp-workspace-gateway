@@ -6,7 +6,7 @@ import { GatewayServer } from '../server/gatewayServer';
 import { startHttpApi } from '../server/httpApi';
 
 async function withApi<T>(run: (baseUrl: string) => Promise<T>): Promise<T> {
-  const gateway = new GatewayServer({ upstreamsFile: null, templatesFile: null, profilesFile: null, policiesFile: null, tracesFile: null });
+  const gateway = new GatewayServer({ upstreamsFile: null, templatesFile: null, profilesFile: null, policiesFile: null, tracesFile: null, sessionsFile: null });
   const server = await startHttpApi(gateway, { host: '127.0.0.1', port: 0 });
   const address = server.address() as AddressInfo;
   const baseUrl = `http://127.0.0.1:${address.port}`;
@@ -387,6 +387,27 @@ test('http api approvals: list empty, decide on unknown id returns 404', async (
 
     const deny = await fetch(`${baseUrl}/api/approvals/no-such-id/deny`, { method: 'POST' });
     assert.equal(deny.status, 404);
+  });
+});
+
+test('http api lists sessions', async () => {
+  await withApi(async (baseUrl) => {
+    const listEmpty = await fetch(`${baseUrl}/api/sessions`);
+    assert.equal(listEmpty.status, 200);
+    assert.deepEqual(await listEmpty.json(), []);
+
+    await fetch(`${baseUrl}/api/sessions/s1/connect`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ profile: 'p1' }),
+    });
+
+    const list = await fetch(`${baseUrl}/api/sessions`);
+    assert.equal(list.status, 200);
+    const sessions = (await list.json()) as Array<{ session_id: string; profile?: string }>;
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].session_id, 's1');
+    assert.equal(sessions[0].profile, 'p1');
   });
 });
 

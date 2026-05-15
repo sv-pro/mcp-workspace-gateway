@@ -16,10 +16,11 @@ export interface GatewayServerOptions {
   profilesFile?: string | null;
   policiesFile?: string | null;
   tracesFile?: string | null;
+  sessionsFile?: string | null;
 }
 
 export class GatewayServer {
-  readonly sessions = new SessionManager();
+  readonly sessions: SessionManager;
   readonly upstreams: UpstreamRegistry;
   readonly templates: UpstreamTemplateRegistry;
   readonly profiles: ProfileRegistry;
@@ -46,6 +47,10 @@ export class GatewayServer {
       options.policiesFile === undefined
         ? path.resolve(process.cwd(), '.mcp-mux-policies.json')
         : options.policiesFile;
+    const sessionsFile =
+      options.sessionsFile === undefined
+        ? path.resolve(process.cwd(), '.mcp-mux-sessions.json')
+        : options.sessionsFile;
 
     const tracesFile =
       options.tracesFile === undefined
@@ -57,6 +62,7 @@ export class GatewayServer {
     this.templates = new UpstreamTemplateRegistry({ persistenceFile: templatesFile });
     this.profiles = new ProfileRegistry({ persistenceFile: profilesFile });
     this.policies = new PolicyRegistry({ persistenceFile: policiesFile });
+    this.sessions = new SessionManager({ persistenceFile: sessionsFile });
     this.tools = new ToolRegistry(this.upstreams);
     this.router = new Router(
       this.sessions,

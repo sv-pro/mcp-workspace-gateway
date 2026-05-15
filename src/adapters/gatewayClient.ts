@@ -1,4 +1,4 @@
-import { JsonRpcRequest, JsonRpcResponse } from '../protocol/types';
+import { GovernancePolicy, JsonRpcRequest, JsonRpcResponse, Profile } from '../protocol/types.js';
 
 export interface GatewayClientOptions {
   baseUrl: string;
@@ -98,6 +98,56 @@ export class GatewayClient {
   async removeUpstream(id: string): Promise<void> {
     await this.request(`/api/upstreams/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+    });
+  }
+
+  async listProfiles(): Promise<Profile[]> {
+    const response = await this.request('/api/profiles', { method: 'GET' });
+    return response.json();
+  }
+
+  async createProfile(profile: Profile): Promise<void> {
+    await this.request('/api/profiles', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(profile),
+    });
+  }
+
+  async deleteProfile(id: string): Promise<void> {
+    await this.request(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async listPolicies(): Promise<GovernancePolicy[]> {
+    const response = await this.request('/api/policies', { method: 'GET' });
+    return response.json();
+  }
+
+  async createPolicy(policy: GovernancePolicy): Promise<void> {
+    await this.request('/api/policies', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(policy),
+    });
+  }
+
+  async deletePolicy(id: string): Promise<void> {
+    await this.request(`/api/policies/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async setSessionProfile(sessionId: string, profileId: string): Promise<void> {
+    await this.request(`/api/sessions/${encodeURIComponent(sessionId)}/profile`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ profileId }),
+    });
+  }
+
+  async setSessionPolicy(sessionId: string, policyId: string): Promise<void> {
+    await this.request(`/api/sessions/${encodeURIComponent(sessionId)}/policy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ policyId }),
     });
   }
 

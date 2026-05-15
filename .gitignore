@@ -10,3 +10,4 @@ npm-debug.log*
 .mcp-mux-traces.jsonl
 .mcp-inspector.log
 .mcp-inspector.pid
+.mcp-mux-sessions.json
