@@ -1,3 +1,4 @@
+import type { AddressInfo } from 'node:net';
 import { GatewayServer } from '../../server/gatewayServer';
 import { startHttpApi } from '../../server/httpApi';
 
@@ -7,9 +8,10 @@ export async function runServeCommand(): Promise<void> {
 
   const gateway = new GatewayServer();
   const server = await startHttpApi(gateway, { host, port });
+  const actualPort = (server.address() as AddressInfo).port;
 
-  process.stdout.write(`mcp-mux gateway running on http://${host}:${port}\n`);
-  process.stdout.write(`Web UI: http://${host}:${port}\n`);
+  process.stdout.write(`mcp-mux gateway running on http://${host}:${actualPort}\n`);
+  process.stdout.write(`Web UI: http://${host}:${actualPort}\n`);
 
   await new Promise<void>((resolve) => {
     const keepAlive = setInterval(() => undefined, 2 ** 30);

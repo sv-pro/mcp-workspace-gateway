@@ -1,15 +1,17 @@
 # MVP Acceptance Test
 
-- [ ] Start one gateway with `mcp-mux serve`
-- [ ] Open Web UI
-- [ ] Register at least two mock upstreams
-- [ ] Start adapter for Inspector with `mcp-mux client --session inspector`
-- [ ] Inspector receives aggregated `tools/list`
-- [ ] Start adapter for Codex with `mcp-mux client --session codex`
-- [ ] Codex receives aggregated `tools/list`
-- [ ] Web UI shows both sessions
-- [ ] Stop Inspector
-- [ ] Codex session remains active
-- [ ] Stop Codex
-- [ ] Gateway remains running
-- [ ] No second gateway process was spawned
+Items marked *(automated)* are covered by `src/test/e2e.test.ts`.
+
+- [x] Start one gateway with `mcp-mux serve` *(automated)*
+- [ ] Open Web UI *(manual — browser required)*
+- [x] Register at least two mock upstreams *(automated)*
+- [x] Start adapter for Inspector with `mcp-mux client --session inspector` *(automated)*
+- [x] Inspector receives aggregated `tools/list` *(automated)*
+- [x] Start adapter for Codex with `mcp-mux client --session codex` *(automated)*
+- [x] Codex receives aggregated `tools/list` *(automated)*
+- [x] Web UI shows both sessions — verified via `GET /api/sessions` *(automated)*
+- [x] Stop Inspector *(automated)*
+- [x] Codex session remains active *(automated)*
+- [x] Stop Codex *(automated)*
+- [x] Gateway remains running *(automated)*
+- [ ] No second gateway process was spawned *(not tested)*
