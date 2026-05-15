@@ -30,6 +30,11 @@
       .upstream-card header { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
       .upstream-card h3 { margin: 0; }
       .upstream-meta { color: #475569; margin: 8px 0; }
+      .upstream-health { align-items: center; display: flex; gap: 6px; margin: 4px 0; }
+      .health-dot { border-radius: 50%; display: inline-block; flex-shrink: 0; height: 8px; width: 8px; }
+      .health-dot-ok { background: #22c55e; }
+      .health-dot-error { background: #ef4444; }
+      .health-dot-unknown { background: #94a3b8; }
       .upstream-file { word-break: break-all; }
       .debug-output { background: #0f172a; border-radius: 6px; color: #e2e8f0; margin-top: 10px; max-height: 260px; overflow: auto; padding: 10px; white-space: pre-wrap; word-break: break-word; }
       .actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -51,6 +56,25 @@
       .profile-tool-list { display: grid; gap: 2px; padding-left: 24px; }
       .tool-row label { color: #475569; }
       .tool-row input:disabled + label { color: #94a3b8; }
+      .filter-bar { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+      .filter-bar label { color: #334155; font-size: 0.9rem; font-weight: 700; }
+      .filter-bar select { font-size: 0.9rem; padding: 6px; }
+      .trace-list { display: grid; gap: 4px; max-height: 520px; overflow-y: auto; }
+      .trace-row { align-items: center; background: #f8fafc; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
+      .trace-time { color: #64748b; font-family: monospace; font-size: 0.8rem; min-width: 68px; }
+      .badge { border-radius: 4px; font-size: 0.75rem; padding: 2px 6px; white-space: nowrap; }
+      .badge-ok { background: #dcfce7; color: #15803d; }
+      .badge-error { background: #fef2f2; color: #b91c1c; }
+      .badge-call { background: #fef9c3; color: #854d0e; }
+      .badge-list { background: #eff6ff; color: #1d4ed8; }
+      .badge-init { background: #f3f4f6; color: #374151; }
+      .badge-policy-allow { background: #dcfce7; color: #15803d; }
+      .badge-policy-deny { background: #fef2f2; color: #b91c1c; }
+      .badge-policy-absent { background: #f3f4f6; color: #374151; }
+      .badge-policy-simulate { background: #ede9fe; color: #6d28d9; }
+      .badge-policy-ask { background: #fef3c7; color: #b45309; }
+      .trace-session { color: #475569; font-size: 0.85rem; }
+      .trace-tool { color: #1e40af; font-family: monospace; font-size: 0.82rem; }
       @media (max-width: 760px) {
         .grid, .manager-grid { grid-template-columns: 1fr; }
       }
@@ -93,8 +117,11 @@
         <h2>Tools</h2>
         <ul id="tools"></ul>
       </section>
-      <section>
-        <h2>Traces</h2>
+      <section id="traces-panel" class="actionable" role="button" tabindex="0" aria-controls="traces-manager" aria-expanded="false">
+        <div class="panel-title">
+          <h2>Traces</h2>
+          <span class="hint">View All</span>
+        </div>
         <ul id="traces"></ul>
       </section>
     </div>
@@ -280,6 +307,36 @@
       </div>
     </section>
 
+    <section id="traces-manager" class="manager hidden" aria-live="polite">
+      <div class="manager-header">
+        <div>
+          <h2>Traces</h2>
+          <div class="hint">Recent JSON-RPC events through the gateway — newest first, up to 500.</div>
+        </div>
+        <button id="close-traces-manager" class="secondary" type="button">Close</button>
+      </div>
+      <div class="filter-bar">
+        <label for="trace-filter-session">Session</label>
+        <select id="trace-filter-session"><option value="">All</option></select>
+        <label for="trace-filter-status">Status</label>
+        <select id="trace-filter-status">
+          <option value="">All</option>
+          <option value="ok">ok</option>
+          <option value="error">error</option>
+        </select>
+        <label for="trace-filter-method">Method</label>
+        <select id="trace-filter-method">
+          <option value="">All</option>
+          <option value="tools/call">tools/call</option>
+          <option value="tools/list">tools/list</option>
+          <option value="initialize">initialize</option>
+          <option value="ping">ping</option>
+        </select>
+        <span class="hint" id="trace-count"></span>
+      </div>
+      <div id="trace-list" class="trace-list"></div>
+    </section>
+
     <script>
       const el = (id) => document.getElementById(id);
       let currentStatus = { upstreams: [], sessions: [], tools: [], traces: [] };
@@ -287,6 +344,8 @@
       let profilesManagerOpen = false;
       let policiesManagerOpen = false;
       let approvalsManagerOpen = false;
+      let tracesManagerOpen = false;
+      const traceFilters = { session: '', status: '', method: '' };
       let editingUpstreamId = null;
       let upstreamTemplates = [];
       let allProfiles = [];
@@ -533,6 +592,29 @@
           meta.className = 'upstream-meta';
           meta.textContent = `${upstream.name} - tools: ${upstream.tool_count}`;
 
+          const healthRow = document.createElement('div');
+          healthRow.className = 'upstream-health';
+          if (upstream.health) {
+            const dot = document.createElement('span');
+            dot.className = `health-dot health-dot-${upstream.health.ok ? 'ok' : 'error'}`;
+            const label = document.createElement('span');
+            label.className = 'hint';
+            label.textContent = upstream.health.ok
+              ? `${upstream.health.duration_ms}ms`
+              : (upstream.health.error ?? 'error');
+            const when = document.createElement('span');
+            when.className = 'hint';
+            when.textContent = `· checked ${fmtTime(upstream.health.checked_at)}`;
+            healthRow.append(dot, label, when);
+          } else {
+            const unknownDot = document.createElement('span');
+            unknownDot.className = 'health-dot health-dot-unknown';
+            const label = document.createElement('span');
+            label.className = 'hint';
+            label.textContent = 'not checked yet';
+            healthRow.append(unknownDot, label);
+          }
+
           const file = document.createElement('div');
           file.className = 'upstream-file';
           if (upstream.type === 'stdio') {
@@ -607,7 +689,7 @@
           });
 
           actions.append(edit, diagnostics, test, restart, remove);
-          card.append(header, meta, file, actions, output);
+          card.append(header, meta, healthRow, file, actions, output);
           listNode.appendChild(card);
           const scrollTop = upstreamDebugScrollTops.get(upstream.id) ?? 0;
           requestAnimationFrame(() => {
@@ -686,10 +768,11 @@
         list('tools', currentStatus.tools.map((t) => t.exposed_name));
         list(
           'traces',
-          currentStatus.traces.slice(0, 20).map((t) => {
-            let s = `${t.method} from ${t.session_id} -> ${t.status}`;
-            if (t.exposed_tool_name) s += ` (${t.exposed_tool_name})`;
-            if (t.policy_decision) s += ` [${t.policy_decision}${t.policy_rule_pattern ? ` on "${t.policy_rule_pattern}"` : ''}]`;
+          currentStatus.traces.slice(0, 5).map((t) => {
+            let s = `${fmtTime(t.timestamp)} ${t.method} [${t.session_id}]`;
+            if (t.exposed_tool_name) s += ` → ${t.exposed_tool_name}`;
+            s += ` — ${t.status}`;
+            if (t.policy_decision) s += ` (${t.policy_decision})`;
             return s;
           }),
         );
@@ -700,6 +783,7 @@
         renderProfilesManager();
         renderPoliciesManager();
         renderApprovalsManager();
+        renderTracesManager();
       }
 
       async function saveUpstream(event) {
@@ -1379,6 +1463,100 @@
         }
       };
 
+      const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
+      const methodBadge = (method) => {
+        const b = document.createElement('span');
+        b.className = 'badge ' + (method === 'tools/call' ? 'badge-call' : method === 'tools/list' ? 'badge-list' : 'badge-init');
+        b.textContent = method;
+        return b;
+      };
+
+      const statusBadge = (status) => {
+        const b = document.createElement('span');
+        b.className = `badge badge-${status}`;
+        b.textContent = status;
+        return b;
+      };
+
+      const policyBadge = (decision) => {
+        if (!decision) return null;
+        const b = document.createElement('span');
+        b.className = `badge badge-policy-${decision}`;
+        b.textContent = decision;
+        return b;
+      };
+
+      const renderTracesManager = () => {
+        const section = el('traces-manager');
+        const panel = el('traces-panel');
+        if (!tracesManagerOpen) {
+          section.classList.add('hidden');
+          panel.setAttribute('aria-expanded', 'false');
+          return;
+        }
+        section.classList.remove('hidden');
+        panel.setAttribute('aria-expanded', 'true');
+
+        const sessionSelect = el('trace-filter-session');
+        const savedSession = sessionSelect.value;
+        const uniqueSessions = [...new Set(currentStatus.traces.map((t) => t.session_id))].sort();
+        sessionSelect.innerHTML = '<option value="">All</option>';
+        for (const s of uniqueSessions) {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = s;
+          opt.selected = s === savedSession;
+          sessionSelect.appendChild(opt);
+        }
+
+        let traces = currentStatus.traces;
+        if (traceFilters.session) traces = traces.filter((t) => t.session_id === traceFilters.session);
+        if (traceFilters.status) traces = traces.filter((t) => t.status === traceFilters.status);
+        if (traceFilters.method) traces = traces.filter((t) => t.method === traceFilters.method);
+
+        el('trace-count').textContent = `${traces.length} event${traces.length !== 1 ? 's' : ''}`;
+
+        const listNode = el('trace-list');
+        listNode.innerHTML = '';
+        if (!traces.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = '(no trace events match current filters)';
+          listNode.appendChild(empty);
+          return;
+        }
+        for (const t of traces) {
+          const row = document.createElement('div');
+          row.className = 'trace-row';
+          const time = document.createElement('span');
+          time.className = 'trace-time';
+          time.textContent = fmtTime(t.timestamp);
+          row.appendChild(time);
+          row.appendChild(methodBadge(t.method));
+          const sess = document.createElement('span');
+          sess.className = 'trace-session';
+          sess.textContent = t.session_id;
+          row.appendChild(sess);
+          if (t.exposed_tool_name) {
+            const tool = document.createElement('span');
+            tool.className = 'trace-tool';
+            tool.textContent = t.exposed_tool_name;
+            row.appendChild(tool);
+          }
+          row.appendChild(statusBadge(t.status));
+          const policy = policyBadge(t.policy_decision);
+          if (policy) row.appendChild(policy);
+          if (t.error_code) {
+            const err = document.createElement('span');
+            err.className = 'hint';
+            err.textContent = `code:${t.error_code}`;
+            row.appendChild(err);
+          }
+          listNode.appendChild(row);
+        }
+      };
+
       el('sessions-panel').addEventListener('click', async () => {
         profilesManagerOpen = !profilesManagerOpen;
         if (profilesManagerOpen) {
@@ -1460,6 +1638,33 @@
       el('close-approvals-manager').addEventListener('click', () => {
         approvalsManagerOpen = false;
         renderApprovalsManager();
+      });
+
+      el('traces-panel').addEventListener('click', () => {
+        tracesManagerOpen = !tracesManagerOpen;
+        renderTracesManager();
+      });
+      el('traces-panel').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          el('traces-panel').click();
+        }
+      });
+      el('close-traces-manager').addEventListener('click', () => {
+        tracesManagerOpen = false;
+        renderTracesManager();
+      });
+      el('trace-filter-session').addEventListener('change', (e) => {
+        traceFilters.session = e.target.value;
+        renderTracesManager();
+      });
+      el('trace-filter-status').addEventListener('change', (e) => {
+        traceFilters.status = e.target.value;
+        renderTracesManager();
+      });
+      el('trace-filter-method').addEventListener('change', (e) => {
+        traceFilters.method = e.target.value;
+        renderTracesManager();
       });
 
       el('upstreams-panel').addEventListener('click', openManager);
