@@ -12,6 +12,15 @@
 - [x] Session persistence — assignments to `.mcp-mux-sessions.json`; TTL expiry; `GET /api/sessions` endpoint
 - [x] CLI for profiles and policies — `mcp-mux profile` and `mcp-mux policy` sub-commands
 
+## Backlog
+
+- [ ] MVP acceptance test — прогнать чеклист из `docs/mvp-acceptance-test.md` вручную; отметить выполненные пункты
+- [ ] E2E тест — автоматизировать MVP acceptance test: spawn gateway + двух клиентов в одном тест-файле (`src/test/e2e.test.ts`)
+- [ ] Web UI: traces view — real-time лента событий с фильтрацией по сессии/инструменту
+- [ ] Web UI: управление профилями и политиками — CRUD прямо из UI вместо CLI
+- [ ] CLI: `mcp-mux session list` — вывод активных сессий с profile/policy
+- [ ] Upstream health monitoring — периодический ping stdio/http апстримов; heartbeat-статус в `/api/status` и Web UI
+
 ## In progress
 
 (none)
