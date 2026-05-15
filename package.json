@@ -3,12 +3,21 @@
   "version": "0.1.0",
   "description": "Local-first MCP workspace gateway",
   "type": "commonjs",
+  "license": "Apache-2.0",
+  "author": "Sergey Vlasov",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sv-pro/mcp-workspace-gateway.git"
+  },
+  "keywords": ["mcp", "model-context-protocol", "gateway", "multiplexer", "cli"],
+  "files": ["dist", "README.md"],
   "bin": {
     "mcp-mux": "dist/cli/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "postbuild": "printf '#!/bin/sh\\nexec node \"$(dirname \"$0\")/cli/index.js\" \"$@\"\\n' > dist/mcp-mux && chmod +x dist/mcp-mux",
+    "postbuild": "printf '#!/bin/sh\\nexec node \"$(dirname \"$0\")/cli/index.js\" \"$@\"\\n' > dist/mcp-mux && chmod +x dist/mcp-mux && mkdir -p dist/web && cp src/web/index.html dist/web/index.html",
+    "prepublishOnly": "npm run build",
     "start": "node dist/cli/index.js",
     "test": "npm run build && node --test dist/test/**/*.test.js"
   },

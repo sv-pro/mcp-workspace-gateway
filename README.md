@@ -2,6 +2,13 @@
 
 **alias: mcp-mux**
 
+## Install
+
+```bash
+npm install -g mcp-workspace-gateway
+mcp-mux serve
+```
+
 ```text
 Many fake local MCP servers.
 One real workspace gateway.

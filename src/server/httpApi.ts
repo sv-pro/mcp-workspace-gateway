@@ -466,7 +466,7 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
       }
 
       if (method === 'GET' && pathname === '/') {
-        const filePath = path.resolve(process.cwd(), 'src/web/index.html');
+        const filePath = path.resolve(__dirname, '../web/index.html');
         const html = await fs.readFile(filePath, 'utf8');
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
