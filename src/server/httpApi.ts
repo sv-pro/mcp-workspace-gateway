@@ -313,11 +313,15 @@ export function startHttpApi(gateway: GatewayServer, options: HttpApiOptions): P
       }
 
       if (method === 'POST' && pathname === '/api/profiles') {
-        const body = await readJson<{ id?: string; upstreamIds?: string[] }>(req);
+        const body = await readJson<{ id?: string; upstreamIds?: string[]; disabledToolIds?: string[] }>(req);
         if (!body.id || !Array.isArray(body.upstreamIds)) {
           return writeJson(res, 400, { error: 'id and upstreamIds are required' });
         }
-        return writeJson(res, 201, gateway.profiles.upsert({ id: body.id, upstreamIds: body.upstreamIds }));
+        return writeJson(res, 201, gateway.profiles.upsert({
+          id: body.id,
+          upstreamIds: body.upstreamIds,
+          disabledToolIds: Array.isArray(body.disabledToolIds) ? body.disabledToolIds : [],
+        }));
       }
 
       const profilePathParts = pathname.split('/');

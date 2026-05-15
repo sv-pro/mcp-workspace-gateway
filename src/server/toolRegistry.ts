@@ -4,13 +4,15 @@ import { UpstreamRegistry } from './upstreamRegistry.js';
 export class ToolRegistry {
   constructor(private readonly upstreamRegistry: UpstreamRegistry) {}
 
-  async list(upstreamFilter?: string[]): Promise<AggregatedTool[]> {
+  async list(upstreamFilter?: string[], disabledToolIds?: Set<string>): Promise<AggregatedTool[]> {
     const adapters = this.filteredAdapters(upstreamFilter);
     const toolsByUpstream = await Promise.all(adapters.map((adapter) => this.listForAdapter(adapter)));
-    return toolsByUpstream.flat().sort((a, b) => a.exposed_name.localeCompare(b.exposed_name));
+    return toolsByUpstream.flat()
+      .filter((t) => !disabledToolIds?.has(t.canonical_tool_id))
+      .sort((a, b) => a.exposed_name.localeCompare(b.exposed_name));
   }
 
-  listCached(upstreamFilter?: string[]): AggregatedTool[] {
+  listCached(upstreamFilter?: string[], disabledToolIds?: Set<string>): AggregatedTool[] {
     return this.filteredAdapters(upstreamFilter)
       .flatMap((adapter) =>
         adapter.listToolsCached().map((rawTool) => ({
@@ -22,11 +24,12 @@ export class ToolRegistry {
           inputSchema: rawTool.inputSchema,
         })),
       )
+      .filter((t) => !disabledToolIds?.has(t.canonical_tool_id))
       .sort((a, b) => a.exposed_name.localeCompare(b.exposed_name));
   }
 
-  async resolveByExposedName(exposedName: string, upstreamFilter?: string[]): Promise<AggregatedTool | undefined> {
-    const tools = await this.list(upstreamFilter);
+  async resolveByExposedName(exposedName: string, upstreamFilter?: string[], disabledToolIds?: Set<string>): Promise<AggregatedTool | undefined> {
+    const tools = await this.list(upstreamFilter, disabledToolIds);
     return tools.find((tool) => tool.exposed_name === exposedName);
   }
 

@@ -5,12 +5,36 @@ PORT ?= 8787
 PID_FILE ?= .mcp-mux.pid
 LOG_FILE ?= .mcp-mux.log
 
+INSPECTOR_PORT ?= 6274
+INSPECTOR_PROXY_PORT ?= 6277
+INSPECTOR_PID_FILE ?= .mcp-inspector.pid
+INSPECTOR_LOG_FILE ?= .mcp-inspector.log
+INSPECTOR_SESSION ?= inspector
+
 NODE_BIN ?= $(shell command -v node 2>/dev/null || find "$(HOME)/.nvm/versions/node" -path "*/bin/node" -type f 2>/dev/null | sort -V | tail -n 1)
 NPM_BIN ?= $(shell command -v npm 2>/dev/null || if [ -n "$(NODE_BIN)" ]; then printf "%s/npm" "$$(dirname "$(NODE_BIN)")"; fi)
 NODE_DIR := $(dir $(NODE_BIN))
 RUN_ENV := PATH=$(NODE_DIR):$$PATH MCP_MUX_HOST=$(HOST) MCP_MUX_PORT=$(PORT)
 
-.PHONY: build start stop status restart logs
+.PHONY: help build start stop status restart logs inspector-start inspector-stop inspector-status
+
+help:
+	@echo "Usage: make <target>"
+	@echo ""
+	@echo "Gateway:"
+	@echo "  build              Compile TypeScript → dist/"
+	@echo "  start              Build and start gateway as background daemon"
+	@echo "  stop               Stop the running gateway"
+	@echo "  restart            Stop then start"
+	@echo "  status             Check if gateway is running"
+	@echo "  logs               Tail the gateway log"
+	@echo ""
+	@echo "Inspector:"
+	@echo "  inspector-start    Start MCP Inspector as background daemon"
+	@echo "  inspector-stop     Stop the running inspector"
+	@echo "  inspector-status   Check if inspector is running"
+	@echo ""
+	@echo "Variables: HOST=$(HOST)  PORT=$(PORT)  INSPECTOR_PORT=$(INSPECTOR_PORT)  INSPECTOR_SESSION=$(INSPECTOR_SESSION)"
 
 build:
 	@if [ -z "$(NPM_BIN)" ]; then \
@@ -98,4 +122,57 @@ logs:
 		tail -f "$(LOG_FILE)"; \
 	else \
 		echo "Log file not found: $(LOG_FILE)"; \
+	fi
+
+inspector-start:
+	@if [ -f "$(INSPECTOR_PID_FILE)" ] && kill -0 "$$(cat "$(INSPECTOR_PID_FILE)")" 2>/dev/null; then \
+		echo "inspector already running: pid $$(cat "$(INSPECTOR_PID_FILE)")"; \
+		echo "UI: http://localhost:$(INSPECTOR_PORT)"; \
+		exit 0; \
+	fi
+	@for port in $(INSPECTOR_PORT) $(INSPECTOR_PROXY_PORT); do \
+		pid="$$(ss -ltnp "( sport = :$$port )" 2>/dev/null | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | head -n 1)"; \
+		if [ -n "$$pid" ]; then \
+			echo "inspector cannot start: port $$port is already in use by pid $$pid (run make inspector-stop)"; \
+			exit 1; \
+		fi; \
+	done
+	@echo "Starting MCP Inspector on http://localhost:$(INSPECTOR_PORT)"
+	@$(RUN_ENV) nohup "$(NODE_DIR)npx" @modelcontextprotocol/inspector "$(NODE_BIN)" dist/cli/index.js client --session "$(INSPECTOR_SESSION)" >"$(INSPECTOR_LOG_FILE)" 2>&1 </dev/null & echo $$! >"$(INSPECTOR_PID_FILE)"
+	@sleep 2
+	@if kill -0 "$$(cat "$(INSPECTOR_PID_FILE)")" 2>/dev/null; then \
+		echo "inspector started: pid $$(cat "$(INSPECTOR_PID_FILE)")"; \
+		echo "UI: http://localhost:$(INSPECTOR_PORT)"; \
+	else \
+		echo "inspector failed to start. Log:"; \
+		cat "$(INSPECTOR_LOG_FILE)"; \
+		rm -f "$(INSPECTOR_PID_FILE)"; \
+		exit 1; \
+	fi
+
+inspector-stop:
+	@pid=""; \
+	if [ -f "$(INSPECTOR_PID_FILE)" ]; then \
+		pid="$$(cat "$(INSPECTOR_PID_FILE)")"; \
+	fi; \
+	if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+		echo "Stopping inspector: pid $$pid"; \
+		kill "$$pid" 2>/dev/null || true; \
+	fi; \
+	rm -f "$(INSPECTOR_PID_FILE)"; \
+	for port in $(INSPECTOR_PORT) $(INSPECTOR_PROXY_PORT); do \
+		orphan="$$(ss -ltnp "( sport = :$$port )" 2>/dev/null | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | head -n 1)"; \
+		if [ -n "$$orphan" ]; then \
+			echo "Killing orphaned process on port $$port: pid $$orphan"; \
+			kill "$$orphan" 2>/dev/null || true; \
+		fi; \
+	done; \
+	echo "inspector stopped"
+
+inspector-status:
+	@if [ -f "$(INSPECTOR_PID_FILE)" ] && kill -0 "$$(cat "$(INSPECTOR_PID_FILE)")" 2>/dev/null; then \
+		echo "inspector running: pid $$(cat "$(INSPECTOR_PID_FILE)")"; \
+		echo "UI: http://localhost:$(INSPECTOR_PORT)"; \
+	else \
+		echo "inspector not running"; \
 	fi

@@ -76,6 +76,7 @@ export interface AggregatedTool {
 export interface Profile {
   id: string;
   upstreamIds: string[];
+  disabledToolIds?: string[];
 }
 
 export type PolicyDecision = 'allow' | 'deny' | 'absent' | 'simulate' | 'ask';

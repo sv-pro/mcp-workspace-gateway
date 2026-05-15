@@ -31,6 +31,9 @@ export class ProfileRegistry {
   upsert(profile: Profile): Profile {
     this.validate(profile);
     const normalized: Profile = { id: profile.id, upstreamIds: [...profile.upstreamIds] };
+    if (profile.disabledToolIds?.length) {
+      normalized.disabledToolIds = [...profile.disabledToolIds];
+    }
     this.profiles.set(normalized.id, normalized);
     this.persist();
     return normalized;

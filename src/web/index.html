@@ -47,6 +47,10 @@
       .empty { color: #64748b; padding: 12px 0; }
       .checkbox-row { align-items: center; display: flex; gap: 8px; }
       .checkbox-row label { font-size: 0.9rem; }
+      .profile-upstream-group { display: grid; gap: 4px; }
+      .profile-tool-list { display: grid; gap: 2px; padding-left: 24px; }
+      .tool-row label { color: #475569; }
+      .tool-row input:disabled + label { color: #94a3b8; }
       @media (max-width: 760px) {
         .grid, .manager-grid { grid-template-columns: 1fr; }
       }
@@ -64,10 +68,10 @@
         </div>
         <ul id="upstreams"></ul>
       </section>
-      <section id="sessions-panel">
+      <section id="sessions-panel" class="actionable" role="button" tabindex="0" aria-controls="profiles-manager" aria-expanded="false">
         <div class="panel-title">
           <h2>Sessions</h2>
-          <span class="hint">Profiles</span>
+          <span class="hint">Manage Profiles</span>
         </div>
         <ul id="sessions"></ul>
       </section>
@@ -965,22 +969,68 @@
         }
 
         const checkboxContainer = el('profile-upstream-checkboxes');
+        const prevCheckedUpstreams = new Set(
+          [...checkboxContainer.querySelectorAll('input[id^="profile-upstream-"]:checked')].map((cb) => cb.value)
+        );
+        const prevUncheckedTools = new Set(
+          [...checkboxContainer.querySelectorAll('input[data-upstream]:not(:checked):not(:disabled)')].map((cb) => cb.value)
+        );
         checkboxContainer.innerHTML = '';
         if (!currentStatus.upstreams.length) {
           checkboxContainer.textContent = '(no upstreams registered)';
         }
+        const toolsByUpstream = new Map();
+        for (const tool of (currentStatus.tools ?? [])) {
+          if (!toolsByUpstream.has(tool.upstream_id)) toolsByUpstream.set(tool.upstream_id, []);
+          toolsByUpstream.get(tool.upstream_id).push(tool);
+        }
         for (const upstream of currentStatus.upstreams) {
-          const row = document.createElement('div');
-          row.className = 'checkbox-row';
-          const checkbox = document.createElement('input');
-          checkbox.type = 'checkbox';
-          checkbox.id = `profile-upstream-${upstream.id}`;
-          checkbox.value = upstream.id;
-          const label = document.createElement('label');
-          label.htmlFor = checkbox.id;
-          label.textContent = upstream.id;
-          row.append(checkbox, label);
-          checkboxContainer.appendChild(row);
+          const group = document.createElement('div');
+          group.className = 'profile-upstream-group';
+
+          const upstreamRow = document.createElement('div');
+          upstreamRow.className = 'checkbox-row';
+          const upstreamCb = document.createElement('input');
+          upstreamCb.type = 'checkbox';
+          upstreamCb.id = `profile-upstream-${upstream.id}`;
+          upstreamCb.value = upstream.id;
+          upstreamCb.checked = prevCheckedUpstreams.has(upstream.id);
+          const upstreamLabel = document.createElement('label');
+          upstreamLabel.htmlFor = upstreamCb.id;
+          upstreamLabel.textContent = upstream.name ?? upstream.id;
+          upstreamRow.append(upstreamCb, upstreamLabel);
+          group.appendChild(upstreamRow);
+
+          const tools = toolsByUpstream.get(upstream.id) ?? [];
+          if (tools.length) {
+            const toolsContainer = document.createElement('div');
+            toolsContainer.className = 'profile-tool-list';
+            for (const tool of tools) {
+              const toolRow = document.createElement('div');
+              toolRow.className = 'checkbox-row tool-row';
+              const toolCb = document.createElement('input');
+              toolCb.type = 'checkbox';
+              toolCb.id = `profile-tool-${tool.canonical_tool_id}`;
+              toolCb.value = tool.canonical_tool_id;
+              toolCb.checked = !prevUncheckedTools.has(tool.canonical_tool_id);
+              toolCb.disabled = !upstreamCb.checked;
+              toolCb.dataset.upstream = upstream.id;
+              const toolLabel = document.createElement('label');
+              toolLabel.htmlFor = toolCb.id;
+              toolLabel.textContent = tool.raw_name;
+              toolRow.append(toolCb, toolLabel);
+              toolsContainer.appendChild(toolRow);
+            }
+            group.appendChild(toolsContainer);
+
+            upstreamCb.addEventListener('change', () => {
+              toolsContainer.querySelectorAll('input[type=checkbox]').forEach((cb) => {
+                cb.disabled = !upstreamCb.checked;
+              });
+            });
+          }
+
+          checkboxContainer.appendChild(group);
         }
       };
 
@@ -1003,13 +1053,16 @@
           showProfileMessage('ID is required.', 'error');
           return;
         }
-        const upstreamIds = [...el('profile-upstream-checkboxes').querySelectorAll('input[type=checkbox]:checked')]
+        const container = el('profile-upstream-checkboxes');
+        const upstreamIds = [...container.querySelectorAll('input[id^="profile-upstream-"]:checked')]
+          .map((cb) => cb.value);
+        const disabledToolIds = [...container.querySelectorAll('input[data-upstream]:not(:checked):not(:disabled)')]
           .map((cb) => cb.value);
         try {
           const res = await fetch('/api/profiles', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ id, upstreamIds }),
+            body: JSON.stringify({ id, upstreamIds, disabledToolIds }),
           });
           if (!res.ok) {
             throw new Error(await res.text());

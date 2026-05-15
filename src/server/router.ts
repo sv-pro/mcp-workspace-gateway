@@ -59,8 +59,8 @@ export class Router {
           break;
         }
         case 'tools/list': {
-          const upstreamFilter = this.resolveUpstreamFilter(sessionId);
-          const tools = await this.toolRegistry.list(upstreamFilter);
+          const { upstreamFilter, disabledToolIds } = this.resolveProfileFilters(sessionId);
+          const tools = await this.toolRegistry.list(upstreamFilter, disabledToolIds);
           const visible = tools.filter(
             (t) => this.resolveDecision(sessionId, t.exposed_name).decision !== 'absent',
           );
@@ -79,8 +79,8 @@ export class Router {
             throw createError(JSON_RPC_ERRORS.invalidParams, 'tools/call requires params.name');
           }
 
-          const upstreamFilter = this.resolveUpstreamFilter(sessionId);
-          const resolved = await this.toolRegistry.resolveByExposedName(params.name, upstreamFilter);
+          const { upstreamFilter, disabledToolIds } = this.resolveProfileFilters(sessionId);
+          const resolved = await this.toolRegistry.resolveByExposedName(params.name, upstreamFilter, disabledToolIds);
           if (!resolved) {
             throw createError(JSON_RPC_ERRORS.methodNotFound, `Unknown tool: ${params.name}`);
           }
@@ -154,13 +154,19 @@ export class Router {
     return response;
   }
 
-  private resolveUpstreamFilter(sessionId: string): string[] | undefined {
+  private resolveProfileFilters(sessionId: string): { upstreamFilter?: string[]; disabledToolIds?: Set<string> } {
     const session = this.sessions.list().find((s) => s.session_id === sessionId);
     if (!session?.profile) {
-      return undefined;
+      return {};
     }
     const profile = this.profiles.get(session.profile);
-    return profile?.upstreamIds;
+    if (!profile) {
+      return {};
+    }
+    return {
+      upstreamFilter: profile.upstreamIds,
+      disabledToolIds: profile.disabledToolIds?.length ? new Set(profile.disabledToolIds) : undefined,
+    };
   }
 
   private resolveDecision(
