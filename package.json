@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "postbuild": "printf '#!/bin/sh\\nexec node \"$(dirname \"$0\")/cli/index.js\" \"$@\"\\n' > dist/mcp-mux && chmod +x dist/mcp-mux",
     "start": "node dist/cli/index.js",
     "test": "npm run build && node --test dist/test/**/*.test.js"
   },

@@ -138,7 +138,7 @@ inspector-start:
 		fi; \
 	done
 	@echo "Starting MCP Inspector on http://localhost:$(INSPECTOR_PORT)"
-	@$(RUN_ENV) nohup "$(NODE_DIR)npx" @modelcontextprotocol/inspector "$(NODE_BIN)" dist/cli/index.js client --session "$(INSPECTOR_SESSION)" >"$(INSPECTOR_LOG_FILE)" 2>&1 </dev/null & echo $$! >"$(INSPECTOR_PID_FILE)"
+	@$(RUN_ENV) nohup "$(NODE_DIR)npx" @modelcontextprotocol/inspector dist/mcp-mux client --session "$(INSPECTOR_SESSION)" --wait >"$(INSPECTOR_LOG_FILE)" 2>&1 </dev/null & echo $$! >"$(INSPECTOR_PID_FILE)"
 	@sleep 2
 	@if kill -0 "$$(cat "$(INSPECTOR_PID_FILE)")" 2>/dev/null; then \
 		echo "inspector started: pid $$(cat "$(INSPECTOR_PID_FILE)")"; \
