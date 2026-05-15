@@ -15,7 +15,7 @@
 
 ## Backlog
 
-- [ ] Web UI: traces view — real-time лента событий с фильтрацией по сессии/инструменту
+- [x] Web UI: traces view — кликабельная панель Traces; менеджер с фильтрами по сессии / статусу / методу; цветные бейджи для статуса и policy decision; обновляется каждые 2 с
 - [ ] Web UI: управление профилями и политиками — CRUD прямо из UI вместо CLI
 - [ ] CLI: `mcp-mux session list` — вывод активных сессий с profile/policy
 - [ ] Upstream health monitoring — периодический ping stdio/http апстримов; heartbeat-статус в `/api/status` и Web UI
